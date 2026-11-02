@@ -115,7 +115,8 @@ fun AnalyticsScreen(snap: Snapshot) {
                 val merchants = snap.txs.asSequence()
                     .filter { it.time in from until to && !it.excluded && kindOf(it).direction < 0 && snap.categoryOf(it)?.categoryType != CategoryType.TRANSFER }
                     .groupBy { it.party ?: "?" }
-                    .map { (p, l) -> Triple(p, l.size, l.sumOf { snap.toEgp(it.amount, it.currency) }) }
+                    .map { (p, l) -> Triple(p, l.size, l.sumOf { -snap.statsEgp(it) }) }
+                    .filter { it.third > 0.5 }
                     .sortedByDescending { it.third }.take(10).toList()
                 SectionCard(tr("Top places", "أكتر أماكن صرفت فيها")) {
                     merchants.forEach { (p, n, v) -> LabelValue("$p  ×$n", money(v, decimals = false)) }

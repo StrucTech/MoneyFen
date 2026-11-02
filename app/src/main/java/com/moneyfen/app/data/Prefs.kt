@@ -42,6 +42,38 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("hideAmounts", false)
         set(v) { sp.edit { putBoolean("hideAmounts", v) }; bump() }
 
+    // Asking how much of a charge was really spent
+    var reviewCredit: Boolean
+        get() = sp.getBoolean("reviewCredit", true)
+        set(v) { sp.edit { putBoolean("reviewCredit", v) }; bump() }
+    var reviewDebit: Boolean
+        get() = sp.getBoolean("reviewDebit", false)
+        set(v) { sp.edit { putBoolean("reviewDebit", v) }; bump() }
+    /** Where the non-personal part goes: CASH, LENT or NONE. */
+    var reviewDest: String
+        get() = sp.getString("reviewDest", "CASH") ?: "CASH"
+        set(v) { sp.edit { putString("reviewDest", v) }; bump() }
+
+    // Live prices
+    var autoUsd: Boolean
+        get() = sp.getBoolean("autoUsd", true)
+        set(v) { sp.edit { putBoolean("autoUsd", v) }; bump() }
+    /** Extra % added to the international gold price to match the local market. */
+    var goldPremium: Double
+        get() = sp.getFloat("goldPremium", 0f).toDouble()
+        set(v) { sp.edit { putFloat("goldPremium", v.toFloat()) }; bump() }
+    var gold24Gram: Double
+        get() = sp.getFloat("gold24", 0f).toDouble()
+        set(v) { sp.edit { putFloat("gold24", v.toFloat()) }; bump() }
+    var pricesAt: Long
+        get() = sp.getLong("pricesAt", 0)
+        set(v) { sp.edit { putLong("pricesAt", v) }; bump() }
+    var pricesError: String
+        get() = sp.getString("pricesError", "") ?: ""
+        set(v) { sp.edit { putString("pricesError", v) }; bump() }
+
+    fun goldGram(karat: Int): Double = gold24Gram * karat / 24.0
+
     // Supabase backup
     var sbUrl: String
         get() = sp.getString("sbUrl", "") ?: ""
@@ -70,6 +102,8 @@ class Prefs(context: Context) {
     fun exportMap(): Map<String, String> = mapOf(
         "senders" to senders, "usdRate" to usdRate.toString(), "savingsPercent" to savingsPercent.toString(),
         "atmToCash" to atmToCash.toString(), "notifyOnSms" to notifyOnSms.toString(),
+        "reviewCredit" to reviewCredit.toString(), "reviewDebit" to reviewDebit.toString(), "reviewDest" to reviewDest,
+        "autoUsd" to autoUsd.toString(), "goldPremium" to goldPremium.toString(),
     )
 
     fun importMap(m: Map<String, String>) {
@@ -78,5 +112,10 @@ class Prefs(context: Context) {
         m["savingsPercent"]?.toIntOrNull()?.let { savingsPercent = it }
         m["atmToCash"]?.toBooleanStrictOrNull()?.let { atmToCash = it }
         m["notifyOnSms"]?.toBooleanStrictOrNull()?.let { notifyOnSms = it }
+        m["reviewCredit"]?.toBooleanStrictOrNull()?.let { reviewCredit = it }
+        m["reviewDebit"]?.toBooleanStrictOrNull()?.let { reviewDebit = it }
+        m["reviewDest"]?.let { reviewDest = it }
+        m["autoUsd"]?.toBooleanStrictOrNull()?.let { autoUsd = it }
+        m["goldPremium"]?.toDoubleOrNull()?.let { goldPremium = it }
     }
 }

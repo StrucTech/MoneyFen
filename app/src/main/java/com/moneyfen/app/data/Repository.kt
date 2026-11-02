@@ -53,6 +53,11 @@ data class Snapshot(
     /** Signed EGP amount of a transaction (+ in / - out). */
     fun signedEgp(t: TxEntity): Double = toEgp(t.amount, t.currency) * kindOf(t).direction
 
+    /** Signed EGP amount that counts in statistics (only my personal part of a split charge). */
+    fun statsEgp(t: TxEntity): Double = toEgp(t.personalAmount ?: t.amount, t.currency) * kindOf(t).direction
+
+    val toReview: List<TxEntity> get() = txs.filter { it.needsReview }
+
     fun categoryOf(t: TxEntity): CategoryEntity? = t.categoryId?.let { categoryById[it] }
 
     /** Income / expense of a period, ignoring excluded and between-accounts transactions. */
@@ -64,7 +69,7 @@ data class Snapshot(
             val k = kindOf(t); if (k == TxKind.ADJUSTMENT) continue
             val c = categoryOf(t)
             val type = c?.categoryType ?: if (k.direction > 0) CategoryType.INCOME else CategoryType.EXPENSE
-            val s = signedEgp(t)
+            val s = statsEgp(t)
             when (type) {
                 CategoryType.TRANSFER -> {}
                 CategoryType.INCOME -> income += s
@@ -100,6 +105,8 @@ sealed class IngestResult {
     data object Ignored : IngestResult()
 }
 
+const val REIMBURSED = "reimbursed"
+
 class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
     private val mutex = Mutex()
     private val day = 86_400_000L
@@ -126,7 +133,7 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
 
     companion object {
         fun balanceOf(a: AccountEntity, txs: List<TxEntity>, usdRate: Double): Double {
-            if (a.accountType == AccountType.GOLD && a.quantity != null && a.unitPrice != null) return a.quantity * a.unitPrice
+            if (a.isHolding && a.quantity != null && a.unitPrice != null) return a.quantity * a.unitPrice
             val bal = txs.map { t ->
                 val amt = when {
                     t.currency == a.currency -> t.amount
@@ -162,12 +169,12 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
     }
 
     suspend fun ingestSms(sender: String, body: String, time: Long, live: Boolean): IngestResult {
-        val (res, tx) = mutex.withLock { ingestLocked(sender, body, time) }
+        val (res, tx) = mutex.withLock { ingestLocked(sender, body, time, live) }
         if (live && tx != null) Notifier.transaction(ctx, this, tx)
         return res
     }
 
-    private suspend fun ingestLocked(sender: String, body: String, time: Long): Pair<IngestResult, TxEntity?> {
+    private suspend fun ingestLocked(sender: String, body: String, time: Long, live: Boolean): Pair<IngestResult, TxEntity?> {
         val h = hash(sender, body)
         if (db.txs().countHashNear(h, time - 15 * 60_000, time + 15 * 60_000) > 0) return IngestResult.Duplicate to null
 
@@ -182,7 +189,7 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
         return when (result) {
             is ParseResult.Info -> { handleInfo(sender, result.info, time); IngestResult.Info to null }
             is ParseResult.Tx -> {
-                val tx = insertParsed(sender, result.tx, time, body, h, patternAccount)
+                val tx = insertParsed(sender, result.tx, time, body, h, patternAccount, live)
                 IngestResult.Added(tx) to tx
             }
             else -> IngestResult.Ignored to null
@@ -260,13 +267,16 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
         )
     }
 
-    private suspend fun insertParsed(sender: String, p: ParsedSms, time: Long, body: String, h: String, forced: Long?): TxEntity {
+    private fun shouldReview(k: TxKind): Boolean =
+        (k == TxKind.CC_CHARGE && prefs.reviewCredit) || (k == TxKind.PURCHASE && prefs.reviewDebit)
+
+    private suspend fun insertParsed(sender: String, p: ParsedSms, time: Long, body: String, h: String, forced: Long?, live: Boolean): TxEntity {
         val acc = resolveAccount(sender, p, forced)
         val rules = db.rules().all(); val cats = db.categories().all()
         var t = TxEntity(
             accountId = acc.id, time = time, amount = p.amount, currency = p.currency, kind = p.kind.name,
             party = p.party, reference = p.reference, balanceAfter = p.balanceAfter, availableAfter = p.availableAfter,
-            smsHash = h, smsBody = body,
+            smsHash = h, smsBody = body, needsReview = live && shouldReview(p.kind),
         )
         t = categorize(t, rules, cats)
         t = t.copy(id = db.txs().upsert(t))
@@ -355,6 +365,42 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
 
     suspend fun saveTx(t: TxEntity): Long = db.txs().upsert(t)
     suspend fun deleteTx(t: TxEntity) = db.txs().delete(t)
+
+    enum class Dest { CASH, LENT, NONE }
+
+    /**
+     * Splits a charge: [personal] counts as my spending, the rest is not spending.
+     * The full amount still affects the card/account balance. The rest can be added to Cash
+     * (I got it back in cash) or to "money people owe me".
+     */
+    suspend fun resolveReview(txId: Long, personal: Double, dest: Dest) { mutex.withLock { resolveLocked(txId, personal, dest) } }
+
+    private suspend fun resolveLocked(txId: Long, personal: Double, dest: Dest) {
+        val t = db.txs().get(txId) ?: return
+        val p = personal.coerceIn(0.0, t.amount)
+        db.txs().byLinked(t.id).filter { it.note == REIMBURSED }.forEach { db.txs().delete(it) }
+        db.txs().upsert(t.copy(personalAmount = if (abs(p - t.amount) < 0.005) null else p, needsReview = false))
+        val rest = t.amount - p
+        if (rest < 0.005 || dest == Dest.NONE) return
+        prefs.reviewDest = dest.name
+        val cats = db.categories().all()
+        val type = if (dest == Dest.CASH) AccountType.CASH else AccountType.LENT
+        val acc = db.accounts().all().firstOrNull { it.accountType == type && !it.archived }
+            ?: AccountEntity(
+                name = if (dest == Dest.CASH) "Cash" else "Owed to me",
+                type = type.name, sortOrder = 3,
+            ).let { it.copy(id = db.accounts().upsert(it)) }
+        val amountInAcc = if (t.currency == acc.currency) rest else if (t.currency == "USD") rest * prefs.usdRate else rest
+        db.txs().upsert(TxEntity(
+            accountId = acc.id, time = t.time, amount = amountInAcc, currency = acc.currency,
+            kind = TxKind.MANUAL_IN.name, categoryId = internalId(cats), party = t.party, note = REIMBURSED, linkedTxId = t.id,
+        ))
+    }
+
+    /** Buying more gold / shares: adds quantity and cost. */
+    suspend fun addToHolding(a: AccountEntity, qty: Double, cost: Double) {
+        db.accounts().upsert(a.copy(quantity = (a.quantity ?: 0.0) + qty, costBasis = (a.costBasis ?: 0.0) + cost))
+    }
 
     suspend fun saveCategory(c: CategoryEntity) = db.categories().upsert(c)
     suspend fun deleteCategory(c: CategoryEntity) { db.txs().clearCategory(c.id); db.categories().delete(c) }

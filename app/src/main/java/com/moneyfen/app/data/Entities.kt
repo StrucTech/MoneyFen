@@ -1,5 +1,6 @@
 package com.moneyfen.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -11,6 +12,7 @@ enum class AccountType(val liability: Boolean, val emoji: String, val en: String
     CASH(false, "💵", "Cash", "كاش"),
     WALLET(false, "📱", "Wallet", "محفظة"),
     GOLD(false, "🥇", "Gold", "دهب"),
+    STOCK(false, "📊", "Stocks", "أسهم"),
     CERTIFICATE(false, "📜", "Certificate", "شهادة"),
     DEPOSIT(false, "🔒", "Deposit", "وديعة"),
     INVESTMENT(false, "📈", "Investment", "استثمار"),
@@ -46,7 +48,17 @@ data class AccountEntity(
     val includeInNetWorth: Boolean = true,
     val archived: Boolean = false,
     val sortOrder: Int = 0,
+    /** Stock ticker for live prices (COMI.CA, AAPL...). */
+    val symbol: String? = null,
+    /** Gold karat (24, 21, 18). */
+    val karat: Int? = null,
+    /** Total purchase cost in the account currency (for profit/loss). */
+    val costBasis: Double? = null,
+    /** Update [unitPrice] automatically from the internet. */
+    @ColumnInfo(defaultValue = "1") val autoPrice: Boolean = true,
+    val priceAt: Long? = null,
 ) {
+    val isHolding: Boolean get() = accountType == AccountType.GOLD || accountType == AccountType.STOCK
     val accountType: AccountType get() = runCatching { AccountType.valueOf(type) }.getOrDefault(AccountType.OTHER_ASSET)
     fun hints(): List<String> = smsHints.split(',', ' ').map { it.trim() }.filter { it.isNotEmpty() }
 }
@@ -77,6 +89,10 @@ data class TxEntity(
     /** User picked the category by hand: rules won't override it. */
     val categoryLocked: Boolean = false,
     val linkedTxId: Long? = null,
+    /** Part of [amount] that is really my spending (null = all of it). The rest isn't counted in stats. */
+    val personalAmount: Double? = null,
+    /** Waiting for the user to say how much of it was really spent. */
+    @ColumnInfo(defaultValue = "0") val needsReview: Boolean = false,
 )
 
 @Serializable

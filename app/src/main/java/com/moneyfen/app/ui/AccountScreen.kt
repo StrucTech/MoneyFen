@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.moneyfen.app.app
 import com.moneyfen.app.data.AccountEntity
 import com.moneyfen.app.data.AccountType
 import com.moneyfen.app.data.Snapshot
@@ -63,9 +64,21 @@ fun AccountScreen(snap: Snapshot, id: Long) {
     var inNet by remember(id) { mutableStateOf(a0.includeInNetWorth) }
     var archived by remember(id) { mutableStateOf(a0.archived) }
     var balanceText by remember(id) { mutableStateOf("") }
+    var karat by remember(id) { mutableStateOf(a0.karat ?: 21) }
+    var symbol by remember(id) { mutableStateOf(a0.symbol ?: "") }
+    var cost by remember(id) { mutableStateOf(a0.costBasis?.let(::fmtPlain) ?: "") }
+    var auto by remember(id) { mutableStateOf(a0.autoPrice) }
+    var quote by remember(id) { mutableStateOf<String?>(null) }
+    var buyMore by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
 
     val isGold = type == AccountType.GOLD
+    val isStock = type == AccountType.STOCK
+    val isHolding = isGold || isStock
+    androidx.compose.runtime.LaunchedEffect(karat, auto, type) {
+        if (isGold && auto && repo.prefs.gold24Gram > 0) unit = fmtPlain(Math.round(repo.prefs.goldGram(karat) * 100) / 100.0)
+    }
     val hasRate = type in setOf(AccountType.CERTIFICATE, AccountType.DEPOSIT, AccountType.INVESTMENT, AccountType.BANK)
 
     val defaultName = tr0(type)
@@ -73,6 +86,8 @@ fun AccountScreen(snap: Snapshot, id: Long) {
         name = name.ifBlank { defaultName }, type = type.name, currency = currency, bank = bank.ifBlank { null }?.uppercase(),
         smsHints = hints, creditLimit = parseNum(limit) ?: 0.0, quantity = parseNum(qty), unitPrice = parseNum(unit),
         annualRate = parseNum(rate), maturity = maturity, note = note.ifBlank { null }, includeInNetWorth = inNet, archived = archived,
+        karat = if (isGold) karat else a0.karat, symbol = symbol.trim().uppercase().ifBlank { null },
+        costBasis = parseNum(cost), autoPrice = auto,
     )
 
     Column(Modifier.fillMaxSize()) {
@@ -89,7 +104,16 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                     if (type == AccountType.CREDIT_CARD && a0.creditLimit > 0) Text(tr("Available: ", "المتاح: ") + money(a0.creditLimit + bal))
                     val r = a0.annualRate
                     if (r != null && r > 0 && bal > 0) Text(tr("Monthly return ≈ ", "العائد الشهري ≈ ") + money(bal * r / 100 / 12))
-                    if (!isGold) {
+                    if (isHolding) {
+                        val c = a0.costBasis
+                        if (c != null && c > 0) {
+                            LabelValue(tr("Bought for", "اشتريته بـ"), money(c))
+                            LabelValue(tr("Profit / loss", "المكسب / الخسارة"), signedText(bal - c) + "  (${"%.1f".format((bal - c) / c * 100)}%)", amountColor(bal - c))
+                        }
+                        a0.priceAt?.let { Text(tr("Price updated ", "السعر اتحدث ") + dateFmt(it, "dd MMM HH:mm"), style = MaterialTheme.typography.bodySmall) }
+                        OutlinedButton(onClick = { buyMore = true }) { Text(tr("+ Bought more", "+ اشتريت تاني")) }
+                    }
+                    if (!isHolding) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             NumberField(
                                 if (type.liability) tr("Correct amount owed", "عدّل المديونية") else tr("Correct balance", "عدّل الرصيد"),
@@ -114,16 +138,52 @@ fun AccountScreen(snap: Snapshot, id: Long) {
             Picker(tr("Type", "النوع"), AccountType.entries, type, { "${it.emoji} " + tr0(it) }, { type = it })
             TextField1(tr("Name", "الاسم"), name, { name = it })
             Picker(tr("Currency", "العملة"), listOf("EGP", "USD"), currency, { it }, { currency = it })
-            if (id == 0L && !isGold) NumberField(
+            if (id == 0L && !isHolding) NumberField(
                 if (type.liability) tr("Amount owed now", "المديونية الحالية") else tr("Current balance", "الرصيد الحالي"),
                 balanceText, { balanceText = it },
             )
             if (type == AccountType.CREDIT_CARD) NumberField(tr("Credit limit", "الحد الائتماني"), limit, { limit = it })
             if (isGold) {
-                NumberField(tr("Grams", "عدد الجرامات"), qty, { qty = it })
-                NumberField(tr("Price per gram (EGP)", "سعر الجرام (جنيه)"), unit, { unit = it })
-                val v = (parseNum(qty) ?: 0.0) * (parseNum(unit) ?: 0.0)
-                Text(tr("Value: ", "القيمة: ") + money(v))
+                Picker(tr("Karat", "العيار"), listOf(24, 21, 18), karat, { "$it" }, { karat = it })
+                NumberField(tr("Grams (gold pound = 8 g of 21k)", "الجرامات (الجنيه الدهب = ٨ جرام عيار ٢١)"), qty, { qty = it })
+            }
+            if (isStock) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextField1(tr("Symbol (COMI.CA, AAPL…)", "الرمز (COMI.CA، AAPL…)"), symbol, { symbol = it }, Modifier.weight(1f))
+                    OutlinedButton(onClick = {
+                        quote = "…"
+                        scope.launch {
+                            quote = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.moneyfen.app.data.Prices.yahoo(symbol) } }
+                                .fold({ q ->
+                                    if (q.currency == "EGP" || q.currency == "USD") currency = q.currency
+                                    unit = fmtPlain(q.price); "✔ ${q.price} ${q.currency}"
+                                }, { "✘ ${it.message}" })
+                        }
+                    }) { Text(tr("Check", "اتأكد")) }
+                }
+                Text(tr("Egyptian stocks end with .CA (e.g. COMI.CA = CIB). Search the symbol on finance.yahoo.com.",
+                    "أسهم البورصة المصرية بتنتهي بـ .CA (مثلاً COMI.CA = CIB). دوّر على الرمز في finance.yahoo.com."), style = MaterialTheme.typography.bodySmall)
+                quote?.let { Text(it) }
+                NumberField(tr("Number of shares", "عدد الأسهم"), qty, { qty = it })
+            }
+            if (isHolding) {
+                NumberField(tr("Total paid ($currency)", "إجمالي اللي دفعته ($currency)"), cost, { cost = it })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("Live price", "سعر لايف"))
+                        Text(tr("Updated from the internet automatically", "بيتحدث من النت أوتوماتيك"), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(auto, { auto = it })
+                }
+                NumberField(if (isGold) tr("Price per gram", "سعر الجرام") else tr("Price per share", "سعر السهم"), unit, { unit = it; auto = false })
+                val q = parseNum(qty) ?: 0.0
+                val v = q * (parseNum(unit) ?: 0.0)
+                val c = parseNum(cost)
+                Text(tr("Value now: ", "قيمته دلوقتي: ") + money(v, currency = currency), fontWeight = FontWeight.SemiBold)
+                if (c != null && c > 0) {
+                    Text(tr("Profit / loss: ", "المكسب / الخسارة: ") + signedText(v - c) + "  (${"%.1f".format((v - c) / c * 100)}%)", color = amountColor(v - c))
+                    if (q > 0) Text(tr("Avg buy price: ", "متوسط سعر الشراء: ") + fmt(c / q), style = MaterialTheme.typography.bodySmall)
+                }
             }
             if (hasRate) NumberField(tr("Annual return %", "العائد السنوي %"), rate, { rate = it })
             if (type == AccountType.CERTIFICATE || type == AccountType.DEPOSIT) {
@@ -145,13 +205,38 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                     val a = build()
                     val newId = repo.saveAccount(a)
                     val init = parseNum(balanceText)
-                    if (id == 0L && init != null && !isGold) {
+                    if (id == 0L && init != null && !isHolding) {
                         repo.setBalance(a.copy(id = newId), if (type.liability) -abs(init) else init)
                     }
+                    if (isHolding && auto) ctx.app.appScope.launch { com.moneyfen.app.data.Prices.refreshAll(repo) }
                     nav.popBackStack()
                 }
             }) { Text(tr("Save", "حفظ")) }
         }
+    }
+
+    if (buyMore && existing != null) {
+        var bq by remember { mutableStateOf("") }
+        var bc by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { buyMore = false },
+            title = { Text(tr("Bought more", "اشتريت تاني")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField(if (isGold) tr("Grams", "الجرامات") else tr("Shares", "الأسهم"), bq, { bq = it })
+                    NumberField(tr("Paid", "دفعت"), bc, { bc = it })
+                }
+            },
+            confirmButton = { TextButton(onClick = {
+                val q = parseNum(bq); val c = parseNum(bc)
+                if (q != null && c != null) scope.launch {
+                    repo.addToHolding(a0, q, c)
+                    qty = fmtPlain((a0.quantity ?: 0.0) + q); cost = fmtPlain((a0.costBasis ?: 0.0) + c)
+                }
+                buyMore = false
+            }) { Text(tr("Add", "ضيف")) } },
+            dismissButton = { TextButton(onClick = { buyMore = false }) { Text(tr("Cancel", "إلغاء")) } },
+        )
     }
 
     if (confirmDelete && existing != null) {

@@ -22,6 +22,7 @@ class MoneyFenApp : Application() {
         Notifier.createChannels(this)
         appScope.launch { repo.ensureSeeded() }
         BackupWorker.schedule(this)
+        com.moneyfen.app.data.PriceWorker.schedule(this)
     }
 }
 

@@ -39,6 +39,14 @@ object Notifier {
         PendingIntent.FLAG_IMMUTABLE,
     )
 
+    private fun reviewIntent(ctx: Context, txId: Long, action: String) = PendingIntent.getBroadcast(
+        ctx, (txId * 10 + action.length).toInt(),
+        Intent(ctx, ReviewReceiver::class.java).setAction(action).putExtra(ReviewReceiver.EXTRA_TX, txId),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    fun cancel(ctx: Context, txId: Long) = runCatching { NotificationManagerCompat.from(ctx).cancel(txId.toInt()) }
+
     suspend fun transaction(ctx: Context, repo: Repository, t: TxEntity) {
         if (!can(ctx)) return
         val snap = repo.snapshot.first()
@@ -52,13 +60,19 @@ object Notifier {
             val label = if (it.account.accountType == AccountType.CREDIT_CARD) (if (ar) "المديونية" else "Debt") else (if (ar) "الرصيد" else "Balance")
             "$label: ${fmt(kotlin.math.abs(it.balance))}"
         } ?: ""
-        if (repo.prefs.notifyOnSms) {
-            val n = NotificationCompat.Builder(ctx, CH_TX)
+        if (repo.prefs.notifyOnSms || t.needsReview) {
+            val b = NotificationCompat.Builder(ctx, CH_TX)
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle(title)
                 .setContentText(listOf(catName, bal).filter { it.isNotBlank() }.joinToString(" | "))
-                .setContentIntent(open(ctx)).setAutoCancel(true).build()
-            runCatching { NotificationManagerCompat.from(ctx).notify(t.id.toInt(), n) }
+                .setContentIntent(open(ctx)).setAutoCancel(true)
+            if (t.needsReview) {
+                b.setContentText((if (ar) "كام منهم صرف فعلاً؟ " else "How much was really spent? ") + listOf(catName, bal).filter { it.isNotBlank() }.joinToString(" | "))
+                b.addAction(0, if (ar) "كله صرفي" else "All mine", reviewIntent(ctx, t.id, ReviewReceiver.ALL))
+                b.addAction(0, if (ar) "مش صرفي (كاش)" else "Not mine (cash)", reviewIntent(ctx, t.id, ReviewReceiver.NONE_CASH))
+                b.addAction(0, if (ar) "تقسيم…" else "Split…", open(ctx))
+            }
+            runCatching { NotificationManagerCompat.from(ctx).notify(t.id.toInt(), b.build()) }
         }
         // Budget check
         if (cat != null && cat.categoryType == CategoryType.EXPENSE && cat.monthlyBudget != null && cat.monthlyBudget > 0 && !t.excluded) {

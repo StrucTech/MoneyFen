@@ -39,6 +39,8 @@
             </intent-filter>
         </receiver>
 
+        <receiver android:name=".ReviewReceiver" android:exported="false" />
+
         <!-- Per-app language on Android < 13 -->
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"

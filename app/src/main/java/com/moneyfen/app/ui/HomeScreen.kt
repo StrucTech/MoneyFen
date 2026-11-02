@@ -82,6 +82,17 @@ fun HomeScreen(snap: Snapshot) {
                     LabelValue(tr("Debts", "الديون"), money(snap.liabilities), amountColor(-1.0))
                 }
             }
+            val review = snap.toReview
+            if (review.isNotEmpty()) item {
+                var open by remember { mutableStateOf<com.moneyfen.app.data.TxEntity?>(null) }
+                SectionCard(tr("Was it really spending? (${review.size})", "صرف فعلاً ولا لأ؟ (${review.size})")) {
+                    review.take(10).forEach { t ->
+                        ClickRow(t.party ?: "", dateFmt(t.time, "dd MMM HH:mm") + " · " + (snap.accountById[t.accountId]?.account?.name ?: ""),
+                            money(t.amount) + if (t.currency != "EGP") " ${t.currency}" else "", amountColor(-1.0), leading = "❔") { open = t }
+                    }
+                }
+                open?.let { ReviewDialog(it) { open = null } }
+            }
             item {
                 SectionCard(tr("This month", "الشهر ده")) {
                     LabelValue(tr("Income", "الدخل"), money(month.income), amountColor(1.0))
@@ -119,7 +130,8 @@ fun HomeScreen(snap: Snapshot) {
                             val a = av.account
                             val sub = buildString {
                                 if (a.accountType == AccountType.CREDIT_CARD && a.creditLimit > 0) append(tr("Available ", "المتاح ") + money(a.creditLimit + av.balance, decimals = false))
-                                if (a.currency != "EGP") append("${a.currency} ${money(av.balance)}")
+                                holdingSummary(av)?.let { append(it) }
+                                if (a.currency != "EGP") append(" · ${a.currency} ${money(av.balance)}")
                                 if (!a.includeInNetWorth) append(tr(" · not in net worth", " · خارج الثروة"))
                             }
                             ClickRow(a.name, sub, money(abs(av.balanceEgp)), amountColor(av.balanceEgp)) { nav.navigate("account/${a.id}") }
@@ -127,6 +139,7 @@ fun HomeScreen(snap: Snapshot) {
                     }
                 }
             }
+            item { PricesCard(snap.accounts.any { it.account.isHolding }) }
             item {
                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.Center) {
                     FilledTonalButton(onClick = { nav.navigate("account/0") }) {

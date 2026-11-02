@@ -119,10 +119,28 @@ fun SettingsScreen(snap: Snapshot) {
                 SwitchRow(tr("Notify on each transaction", "إشعار مع كل معاملة"), null, prefs.notifyOnSms) { prefs.notifyOnSms = it }
                 SwitchRow(tr("ATM withdrawals go to Cash account", "السحب من ATM يروح لحساب الكاش"),
                     tr("Otherwise they count as spending (Cash withdrawal)", "غير كده بيتحسب مصروف (سحب كاش)"), prefs.atmToCash) { prefs.atmToCash = it }
+            }
+            SectionCard(tr("Card charges", "مصاريف الكارت")) {
+                SwitchRow(tr("Ask after each credit card charge", "اسألني بعد كل عملية على الكريديت"),
+                    tr("How much was really spent; the rest isn't counted as spending but stays on the card debt",
+                        "كام منها صرف فعلاً؛ الباقي مش بيتحسب مصروف بس بيفضل على مديونية الكارت"), prefs.reviewCredit) { prefs.reviewCredit = it }
+                SwitchRow(tr("Also ask for debit card purchases", "اسألني كمان في مشتريات الديبت"), null, prefs.reviewDebit) { prefs.reviewDebit = it }
+            }
+            SectionCard(tr("Prices", "الأسعار")) {
+                SwitchRow(tr("Update USD rate automatically", "حدّث سعر الدولار أوتوماتيك"), null, prefs.autoUsd) { prefs.autoUsd = it }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NumberField(tr("USD rate (EGP)", "سعر الدولار"), usd, { usd = it }, Modifier.weight(1f))
-                    Button(onClick = { parseNum(usd)?.let { prefs.usdRate = it } }) { Text(tr("Save", "حفظ")) }
+                    Button(onClick = { parseNum(usd)?.let { prefs.usdRate = it; prefs.autoUsd = false } }) { Text(tr("Save", "حفظ")) }
                 }
+                var premium by remember { mutableStateOf(fmtPlain(prefs.goldPremium)) }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField(tr("Gold local premium %", "فرق سعر الدهب المحلي %"), premium, { premium = it }, Modifier.weight(1f))
+                    Button(onClick = { parseNum(premium)?.let { prefs.goldPremium = it; prefs.pricesAt = 0 } }) { Text(tr("Save", "حفظ")) }
+                }
+                Text(tr(
+                    "Gold price = world price × USD rate. If the local shop price differs, put the difference here (e.g. 1.5 or -0.5).",
+                    "سعر الدهب = السعر العالمي × سعر الدولار. لو سعر محل الدهب مختلف حط الفرق هنا (مثلاً 1.5 أو -0.5).",
+                ), style = MaterialTheme.typography.bodySmall)
             }
             SectionCard(tr("Customize", "تخصيص")) {
                 ClickRow(tr("Categories & budgets", "التصنيفات والميزانيات"), "${snap.categories.size}", leading = "🗂️") { nav.navigate("categories") }

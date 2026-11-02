@@ -30,6 +30,7 @@ interface TxDao {
     suspend fun between(from: Long, to: Long): List<TxEntity>
     @Query("SELECT * FROM transactions WHERE accountId = :accountId AND time BETWEEN :from AND :to ORDER BY time")
     suspend fun forAccountBetween(accountId: Long, from: Long, to: Long): List<TxEntity>
+    @Query("SELECT * FROM transactions WHERE linkedTxId = :id") suspend fun byLinked(id: Long): List<TxEntity>
     @Upsert suspend fun upsert(t: TxEntity): Long
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertAll(list: List<TxEntity>)
     @Delete suspend fun delete(t: TxEntity)

@@ -160,6 +160,8 @@ fun TxRow(snap: Snapshot, t: TxEntity, showAccount: Boolean, onClick: () -> Unit
         if (showAccount) snap.accountById[t.accountId]?.let { add(it.account.name) }
         add(dateFmt(t.time, "HH:mm"))
         if (t.note != null) add(t.note)
+        t.personalAmount?.let { add(tr("mine ", "صرفي ") + fmt(it)) }
+        if (t.needsReview) add("❔")
     }.joinToString(" · ")
     Row(Modifier.fillMaxWidth()) {
         Column(Modifier.weight(1f)) {
@@ -254,6 +256,16 @@ fun TxEditScreen(snap: Snapshot, id: Long, accountId: Long) {
                 OutlinedButton(onClick = { showRule = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(tr("Always categorize \"${existing.party}\" like this", "صنّف \"${existing.party}\" كده على طول"))
                 }
+            }
+            if (existing != null && kindOf(existing).direction < 0) {
+                var split by remember { mutableStateOf(false) }
+                OutlinedButton(onClick = { split = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        existing.personalAmount?.let { tr("My spending: ", "صرفي منها: ") + fmt(it) + tr(" (change)", " (تعديل)") }
+                            ?: tr("Split: how much was really my spending?", "تقسيم: كام منها صرفي فعلاً؟"),
+                    )
+                }
+                if (split) ReviewDialog(existing) { split = false }
             }
             existing?.linkedTxId?.let { lid ->
                 TextButton(onClick = { nav.navigate("tx/$lid") }) { Text(tr("Linked transaction →", "المعاملة المرتبطة ←")) }
