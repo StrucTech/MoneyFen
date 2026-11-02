@@ -127,7 +127,7 @@ fun AccountScreen(snap: Snapshot, id: Long) {
             }
             if (hasRate) NumberField(tr("Annual return %", "العائد السنوي %"), rate, { rate = it })
             if (type == AccountType.CERTIFICATE || type == AccountType.DEPOSIT) {
-                DateField(tr("Maturity", "تاريخ الاستحقاق"), maturity ?: System.currentTimeMillis()) { maturity = it }
+                DateField(tr("Maturity", "تاريخ الاستحقاق"), maturity ?: System.currentTimeMillis(), { maturity = it })
             }
             if (type in setOf(AccountType.BANK, AccountType.CREDIT_CARD, AccountType.WALLET)) {
                 TextField1(tr("SMS sender (e.g. CIB)", "مرسل الرسايل (مثلاً CIB)"), bank, { bank = it })
