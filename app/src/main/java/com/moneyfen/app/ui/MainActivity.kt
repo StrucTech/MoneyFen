@@ -4,7 +4,12 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Home
@@ -69,9 +74,11 @@ private val tabs = listOf(
 private fun AppScaffold(nav: NavHostController, snap: Snapshot) {
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
+    val showBar = tabs.any { it.route == route }
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            if (tabs.any { it.route == route }) NavigationBar {
+            if (showBar) NavigationBar {
                 tabs.forEach { t ->
                     NavigationBarItem(
                         selected = route == t.route,
@@ -83,7 +90,9 @@ private fun AppScaffold(nav: NavHostController, snap: Snapshot) {
             }
         },
     ) { pad ->
-        NavHost(nav, startDestination = "home", modifier = Modifier.padding(pad)) {
+        val mod = Modifier.padding(pad).consumeWindowInsets(pad).statusBarsPadding()
+            .then(if (showBar) Modifier else Modifier.navigationBarsPadding()).imePadding()
+        NavHost(nav, startDestination = "home", modifier = mod) {
             composable("home") { HomeScreen(snap) }
             composable("txs") { TransactionsScreen(snap, null) }
             composable("analytics") { AnalyticsScreen(snap) }

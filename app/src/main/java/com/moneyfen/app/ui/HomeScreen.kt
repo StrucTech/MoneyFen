@@ -1,5 +1,6 @@
 package com.moneyfen.app.ui
 
+import androidx.compose.foundation.layout.WindowInsets
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -62,7 +63,7 @@ fun HomeScreen(snap: Snapshot) {
     val pct = repo.prefs.savingsPercent
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(
+        TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), 
             title = { Text("MoneyFen") },
             actions = {
                 IconButton(onClick = { repo.prefs.hideAmounts = !hide }) {

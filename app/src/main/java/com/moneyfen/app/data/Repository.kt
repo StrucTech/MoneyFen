@@ -161,9 +161,15 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
             prefs.senderList().isEmpty()
     }
 
-    suspend fun ingestSms(sender: String, body: String, time: Long, live: Boolean): IngestResult = mutex.withLock {
+    suspend fun ingestSms(sender: String, body: String, time: Long, live: Boolean): IngestResult {
+        val (res, tx) = mutex.withLock { ingestLocked(sender, body, time) }
+        if (live && tx != null) Notifier.transaction(ctx, this, tx)
+        return res
+    }
+
+    private suspend fun ingestLocked(sender: String, body: String, time: Long): Pair<IngestResult, TxEntity?> {
         val h = hash(sender, body)
-        if (db.txs().countHashNear(h, time - 15 * 60_000, time + 15 * 60_000) > 0) return IngestResult.Duplicate
+        if (db.txs().countHashNear(h, time - 15 * 60_000, time + 15 * 60_000) > 0) return IngestResult.Duplicate to null
 
         val patterns = db.patterns().all()
         var patternAccount: Long? = null
@@ -174,13 +180,12 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
         }
         val result: ParseResult = if (custom != null) ParseResult.Tx(custom) else CibParser.parse(body)
         return when (result) {
-            is ParseResult.Info -> { handleInfo(sender, result.info, time); IngestResult.Info }
+            is ParseResult.Info -> { handleInfo(sender, result.info, time); IngestResult.Info to null }
             is ParseResult.Tx -> {
                 val tx = insertParsed(sender, result.tx, time, body, h, patternAccount)
-                if (live) Notifier.transaction(ctx, this, tx)
-                IngestResult.Added(tx)
+                IngestResult.Added(tx) to tx
             }
-            else -> IngestResult.Ignored
+            else -> IngestResult.Ignored to null
         }
     }
 
@@ -361,7 +366,9 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
     suspend fun deletePattern(p: SmsPatternEntity) = db.patterns().delete(p)
 
     /** Re-run rules on every transaction whose category wasn't picked by hand. Returns changed count. */
-    suspend fun reapplyRules(): Int = mutex.withLock {
+    suspend fun reapplyRules(): Int = mutex.withLock { reapplyLocked() }
+
+    private suspend fun reapplyLocked(): Int {
         val rules = db.rules().all(); val cats = db.categories().all()
         val internal = internalId(cats)
         var n = 0
@@ -373,7 +380,7 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
                 if (u != t) { db.txs().upsert(u); n++ }
             }
         }
-        n
+        return n
     }
 
     suspend fun clearAll() = db.withTransaction {

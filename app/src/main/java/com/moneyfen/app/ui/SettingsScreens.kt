@@ -1,5 +1,6 @@
 package com.moneyfen.app.ui
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -67,7 +68,7 @@ import kotlinx.coroutines.withContext
 private fun SubScreen(title: String, fab: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val nav = LocalNav.current
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text(title) }, navigationIcon = { IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } })
+        TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), title = { Text(title) }, navigationIcon = { IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } })
         Box(Modifier.fillMaxSize()) {
             content()
             if (fab != null) FloatingActionButton(onClick = fab, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) { Icon(Icons.Default.Add, null) }
@@ -100,7 +101,7 @@ fun SettingsScreen(snap: Snapshot) {
     val lang = L.current()
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text(tr("Settings", "الإعدادات")) })
+        TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), title = { Text(tr("Settings", "الإعدادات")) })
         Column(Modifier.verticalScroll(rememberScrollState())) {
             SectionCard(tr("Language", "اللغة")) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

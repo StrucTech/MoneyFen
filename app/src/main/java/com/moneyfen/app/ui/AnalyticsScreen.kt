@@ -1,5 +1,6 @@
 package com.moneyfen.app.ui
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -60,7 +61,7 @@ fun AnalyticsScreen(snap: Snapshot) {
     val total = byCat.sumOf { it.second }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text(tr("Analytics", "التحليل")) })
+        TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), title = { Text(tr("Analytics", "التحليل")) })
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             IconButton(onClick = { offset-- }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null) }
             Text(dateFmt(from, "MMMM yyyy"), style = MaterialTheme.typography.titleMedium)

@@ -1,5 +1,6 @@
 package com.moneyfen.app.ui
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -75,7 +76,7 @@ fun AccountScreen(snap: Snapshot, id: Long) {
     )
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(
+        TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), 
             title = { Text(if (id == 0L) tr("New account", "حساب جديد") else a0.name) },
             navigationIcon = { IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
             actions = { if (id != 0L) IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, null) } },

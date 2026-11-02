@@ -1,5 +1,6 @@
 package com.moneyfen.app.ui
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -102,7 +103,7 @@ fun TransactionsScreen(snap: Snapshot, accountId: Long?) {
         }.toList()
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(
+        TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), 
             title = { Text(accountId?.let { snap.accountById[it]?.account?.name } ?: tr("Transactions", "المعاملات")) },
             navigationIcon = { if (accountId != null) IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
         )
@@ -203,7 +204,7 @@ fun TxEditScreen(snap: Snapshot, id: Long, accountId: Long) {
     var confirmDelete by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(
+        TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), 
             title = { Text(if (id == 0L) tr("New transaction", "معاملة جديدة") else tr("Edit transaction", "تعديل المعاملة")) },
             navigationIcon = { IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
             actions = { if (id != 0L) IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, null) } },

@@ -160,11 +160,11 @@ fun TextField1(label: String, value: String, onChange: (String) -> Unit, modifie
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun <T> Picker(label: String, options: List<T>, selected: T?, text: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
+fun <T> Picker(label: String, options: List<T>, selected: T?, text: @Composable (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
     var open by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }, modifier = modifier) {
         OutlinedTextField(
-            value = selected?.let(text) ?: "", onValueChange = {}, readOnly = true, label = { Text(label) },
+            value = if (selected != null) text(selected) else "", onValueChange = {}, readOnly = true, label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(open) },
             modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
         )

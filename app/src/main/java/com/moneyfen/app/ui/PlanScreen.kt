@@ -1,5 +1,6 @@
 package com.moneyfen.app.ui
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -63,7 +64,7 @@ fun PlanScreen(snap: Snapshot) {
     val avgExpense = avg.map { it.expense }.average()
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text(tr("Savings plan", "خطة الادخار")) })
+        TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), title = { Text(tr("Savings plan", "خطة الادخار")) })
         LazyColumn(Modifier.fillMaxSize()) {
             item {
                 SectionCard(tr("Save a fixed % of income", "ادخر نسبة ثابتة من الدخل")) {
@@ -165,7 +166,7 @@ fun GoalEditScreen(snap: Snapshot, id: Long) {
     var confirm by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(
+        TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), 
             title = { Text(if (id == 0L) tr("New goal", "هدف جديد") else g0.name) },
             navigationIcon = { IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
             actions = { if (id != 0L) IconButton(onClick = { confirm = true }) { Icon(Icons.Default.Delete, null) } },
