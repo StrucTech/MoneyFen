@@ -133,8 +133,11 @@ fun HomeScreen(snap: Snapshot) {
                                 holdingSummary(av)?.let { append(it) }
                                 if (a.currency != "EGP") append(" · ${a.currency} ${money(av.balance)}")
                                 if (!a.includeInNetWorth) append(tr(" · not in net worth", " · خارج الثروة"))
+                                val r = snap.reserved(a.id)
+                                if (r > 0) append(tr("Total ", "الإجمالي ") + money(av.balance, decimals = false) + tr(" · 🎯 goals ", " · 🎯 أهداف ") + money(r, decimals = false))
                             }
-                            ClickRow(a.name, sub, money(abs(av.balanceEgp)), amountColor(av.balanceEgp)) { nav.navigate("account/${a.id}") }
+                            val shown = if (snap.reserved(a.id) > 0) snap.free(av) else av.balanceEgp
+                            ClickRow(a.name, sub, (if (snap.reserved(a.id) > 0) tr("free ", "متاح ") else "") + money(abs(shown)), amountColor(shown)) { nav.navigate("account/${a.id}") }
                         }
                     }
                 }

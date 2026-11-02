@@ -56,6 +56,7 @@ fun PlanScreen(snap: Snapshot) {
     val (from, to) = monthRange()
     val month = snap.totals(from, to)
     var editBudgets by remember { mutableStateOf(false) }
+    var move by remember { mutableStateOf<Pair<GoalEntity, Int>?>(null) }
     var pct by remember { mutableFloatStateOf(repo.prefs.savingsPercent.toFloat()) }
 
     // Average of the last 3 complete months, for context
@@ -93,6 +94,14 @@ fun PlanScreen(snap: Snapshot) {
                             ClickRow("${g.emoji} ${g.name}", "${money(current, false)} / ${money(g.target, false)} · ${dateFmt(g.deadline)}",
                                 if (current >= g.target) "✅" else "${(current / g.target * 100).toInt()}%") { nav.navigate("goal/${g.id}") }
                             ProgressLine((current / g.target).toFloat())
+                            g.accountId?.let { aid -> snap.accountById[aid] }?.let { av ->
+                                Text((if (g.wholeAccount) tr("Whole balance of ", "كل رصيد ") else tr("Reserved in ", "محجوز في ")) + av.account.name,
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (!g.wholeAccount) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                androidx.compose.material3.OutlinedButton(onClick = { move = g to 1 }) { Text(tr("+ Add", "+ حط فيه")) }
+                                androidx.compose.material3.OutlinedButton(onClick = { move = g to -1 }) { Text(tr("− Take out", "− خد منه")) }
+                            }
                             if (current < g.target) Text(tr("Save ", "حوّش ") + money(monthly, false) + tr(" / month", " في الشهر") +
                                 " (${PlanMath.monthsLeft(System.currentTimeMillis(), g.deadline)} " + tr("months", "شهر") + ")",
                                 style = MaterialTheme.typography.bodySmall)
@@ -122,6 +131,39 @@ fun PlanScreen(snap: Snapshot) {
         }
     }
 
+    move?.let { (g, sign) ->
+        var amt by remember(g.id, sign) { mutableStateOf("") }
+        val av = g.accountId?.let { snap.accountById[it] }
+        val v = parseNum(amt) ?: 0.0
+        AlertDialog(
+            onDismissRequest = { move = null },
+            title = { Text("${g.emoji} ${g.name}: " + if (sign > 0) tr("add", "حط فيه") else tr("take out", "خد منه")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField(tr("Amount", "المبلغ"), amt, { amt = it })
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (sign > 0 && av != null) androidx.compose.material3.AssistChip(onClick = { amt = fmtPlain(maxOf(0.0, snap.free(av))) },
+                            label = { Text(tr("All free", "كل المتاح")) })
+                        if (sign > 0) androidx.compose.material3.AssistChip(onClick = { amt = fmtPlain(maxOf(0.0, g.target - g.saved)) },
+                            label = { Text(tr("What's left", "الباقي للهدف")) })
+                        if (sign < 0) androidx.compose.material3.AssistChip(onClick = { amt = fmtPlain(g.saved) }, label = { Text(tr("All", "كله")) })
+                    }
+                    Text(tr("In goal: ", "في الهدف: ") + money(g.saved) + " → " + money(maxOf(0.0, g.saved + sign * v)))
+                    if (av != null) {
+                        val freeAfter = snap.free(av) - sign * v
+                        Text(av.account.name + tr(" free to spend: ", " المتاح للصرف: ") + money(freeAfter), color = amountColor(freeAfter))
+                        if (freeAfter < 0) Text(tr("More than the free balance!", "أكتر من المتاح في الحساب!"), color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = {
+                scope.launch { repo.saveGoal(g.copy(saved = maxOf(0.0, g.saved + sign * v))) }
+                move = null
+            }) { Text(tr("Save", "حفظ")) } },
+            dismissButton = { TextButton(onClick = { move = null }) { Text(tr("Cancel", "إلغاء")) } },
+        )
+    }
+
     if (editBudgets) {
         val cats = snap.categories.filter { it.categoryType == CategoryType.EXPENSE }
         val values = remember { mutableStateMapOf<Long, String>().apply { cats.forEach { put(it.id, it.monthlyBudget?.let(::fmtPlain) ?: "") } } }
@@ -147,8 +189,7 @@ fun PlanScreen(snap: Snapshot) {
     }
 }
 
-fun goalCurrent(snap: Snapshot, g: GoalEntity): Double =
-    g.accountId?.let { snap.accountById[it]?.balanceEgp } ?: g.saved
+fun goalCurrent(snap: Snapshot, g: GoalEntity): Double = snap.goalCurrent(g)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -163,6 +204,7 @@ fun GoalEditScreen(snap: Snapshot, id: Long) {
     var deadline by remember(id) { mutableStateOf(g0.deadline) }
     var saved by remember(id) { mutableStateOf(fmtPlain(g0.saved)) }
     var account by remember(id) { mutableStateOf(g0.accountId) }
+    var whole by remember(id) { mutableStateOf(g0.wholeAccount) }
     var confirm by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
@@ -179,12 +221,30 @@ fun GoalEditScreen(snap: Snapshot, id: Long) {
             NumberField(tr("Target amount", "المبلغ المطلوب"), target, { target = it })
             DateField(tr("By", "قبل"), deadline, { deadline = it })
             val accounts = snap.accounts.map { it.account }.filter { !it.accountType.liability }
-            Picker(tr("Track with account", "اربطه بحساب"), listOf<AccountEntity?>(null) + accounts, accounts.firstOrNull { it.id == account },
+            Picker(tr("Money is in account", "الفلوس في حساب"), listOf<AccountEntity?>(null) + accounts, accounts.firstOrNull { it.id == account },
                 { it?.let { a -> "${a.accountType.emoji} ${a.name}" } ?: tr("— manual amount —", "— مبلغ يدوي —") }, { account = it?.id })
-            if (account == null) NumberField(tr("Saved so far", "حوشت لحد دلوقتي"), saved, { saved = it })
+            val av = account?.let { snap.accountById[it] }
+            if (av != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("Whole account balance counts", "كل رصيد الحساب يتحسب للهدف"))
+                        Text(tr("Off = reserve only the amount below from the account", "مقفول = احجز المبلغ اللي تحت بس من الحساب"), style = MaterialTheme.typography.bodySmall)
+                    }
+                    androidx.compose.material3.Switch(whole, { whole = it })
+                }
+            }
+            if (av == null || !whole) {
+                NumberField(if (av != null) tr("Amount reserved from the account", "المبلغ المحجوز من الحساب") else tr("Saved so far", "حوشت لحد دلوقتي"), saved, { saved = it })
+                if (av != null) {
+                    val otherReserved = snap.reserved(av.account.id) - (if (g0.accountId == av.account.id && !g0.wholeAccount) g0.saved else 0.0)
+                    val freeAfter = av.balance - otherReserved - (parseNum(saved) ?: 0.0)
+                    Text(tr("Balance ", "الرصيد ") + money(av.balance) + tr(" · free to spend after this ", " · المتاح للصرف بعد كده ") + money(freeAfter),
+                        color = amountColor(freeAfter), style = MaterialTheme.typography.bodySmall)
+                }
+            }
             val t = parseNum(target) ?: 0.0
             if (t > 0) {
-                val cur = account?.let { snap.accountById[it]?.balanceEgp } ?: parseNum(saved) ?: 0.0
+                val cur = if (av != null && whole) av.balanceEgp else parseNum(saved) ?: 0.0
                 Text(tr("Needed per month: ", "محتاج تحوش في الشهر: ") + money(PlanMath.monthlyNeeded(t, cur, System.currentTimeMillis(), deadline)),
                     fontWeight = FontWeight.SemiBold)
             }
@@ -192,7 +252,7 @@ fun GoalEditScreen(snap: Snapshot, id: Long) {
                 val tv = parseNum(target) ?: return@Button
                 scope.launch {
                     repo.saveGoal(g0.copy(name = name.ifBlank { "Goal" }, emoji = emoji.ifBlank { "🎯" }, target = tv, deadline = deadline,
-                        accountId = account, saved = parseNum(saved) ?: 0.0))
+                        accountId = account, saved = parseNum(saved) ?: 0.0, wholeAccount = account != null && whole))
                     nav.popBackStack()
                 }
             }) { Text(tr("Save", "حفظ")) }

@@ -135,9 +135,11 @@ data class GoalEntity(
     val emoji: String = "🎯",
     val target: Double,
     val deadline: Long,
-    /** Manually tracked saved amount (used when no account is linked). */
+    /** Amount set aside for this goal (reserved inside [accountId] when linked). */
     val saved: Double = 0.0,
     val accountId: Long? = null,
+    /** Old style: the whole balance of the linked account counts for the goal. */
+    @ColumnInfo(defaultValue = "0") val wholeAccount: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
 )
 

@@ -58,6 +58,15 @@ data class Snapshot(
 
     val toReview: List<TxEntity> get() = txs.filter { it.needsReview }
 
+    /** Money reserved for goals inside an account. */
+    fun reserved(accountId: Long): Double = goals.filter { it.accountId == accountId && !it.wholeAccount }.sumOf { it.saved }
+
+    /** Balance minus what is reserved for goals. */
+    fun free(av: AccountView): Double = av.balance - reserved(av.account.id)
+
+    fun goalCurrent(g: GoalEntity): Double =
+        if (g.wholeAccount && g.accountId != null) accountById[g.accountId]?.balanceEgp ?: 0.0 else g.saved
+
     fun categoryOf(t: TxEntity): CategoryEntity? = t.categoryId?.let { categoryById[it] }
 
     /** Income / expense of a period, ignoring excluded and between-accounts transactions. */

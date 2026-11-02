@@ -119,6 +119,14 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                 SectionCard(tr("Balance", "الرصيد")) {
                     Text(money(abs(bal), currency = currency), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = amountColor(bal))
                     if (type == AccountType.CREDIT_CARD && a0.creditLimit > 0) Text(tr("Available: ", "المتاح: ") + money(a0.creditLimit + bal))
+                    val reserved = snap.reserved(id)
+                    if (reserved > 0) {
+                        LabelValue(tr("🎯 Reserved for goals", "🎯 محجوز للأهداف"), money(reserved))
+                        snap.goals.filter { it.accountId == id && !it.wholeAccount && it.saved > 0 }.forEach { g ->
+                            LabelValue("   ${g.emoji} ${g.name}", money(g.saved))
+                        }
+                        LabelValue(tr("Free to spend", "المتاح للصرف"), money(bal - reserved), amountColor(bal - reserved))
+                    }
                     val r = a0.annualRate
                     if (r != null && r > 0 && bal > 0) Text(tr("Monthly return ≈ ", "العائد الشهري ≈ ") + money(bal * r / 100 / 12))
                     if (isHolding) {
