@@ -12,7 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AccountEntity::class, TxEntity::class, CategoryEntity::class, RuleEntity::class,
         GoalEntity::class, SmsPatternEntity::class, StatementEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -26,7 +26,14 @@ abstract class AppDb : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDb =
-            Room.databaseBuilder(context, AppDb::class.java, "moneyfen.db").addMigrations(M1_2).build()
+            Room.databaseBuilder(context, AppDb::class.java, "moneyfen.db").addMigrations(M1_2, M2_3).build()
+
+        private val M2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE accounts ADD COLUMN priceUrl TEXT")
+                db.execSQL("ALTER TABLE accounts ADD COLUMN priceAnchor TEXT")
+            }
+        }
 
         private val M1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {

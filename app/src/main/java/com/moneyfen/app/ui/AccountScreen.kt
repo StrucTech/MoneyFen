@@ -74,7 +74,17 @@ fun AccountScreen(snap: Snapshot, id: Long) {
     var confirmDelete by remember { mutableStateOf(false) }
 
     val isGold = type == AccountType.GOLD
-    val isStock = type == AccountType.STOCK
+    val isStock = type == AccountType.STOCK || type == AccountType.FUND
+    var source by remember(id) { mutableStateOf(when {
+        id != 0L && !a0.autoPrice -> "MANUAL"
+        !a0.priceUrl.isNullOrBlank() -> "WEB"
+        id == 0L && a0.symbol == null && type == AccountType.FUND -> "MANUAL"
+        else -> "YAHOO"
+    }) }
+    var priceUrl by remember(id) { mutableStateOf(a0.priceUrl ?: "") }
+    var anchor by remember(id) { mutableStateOf(a0.priceAnchor ?: "") }
+    var searchQ by remember(id) { mutableStateOf("") }
+    var hits by remember(id) { mutableStateOf<List<com.moneyfen.app.data.SymbolHit>>(emptyList()) }
     val isHolding = isGold || isStock
     androidx.compose.runtime.LaunchedEffect(karat, auto, type) {
         if (isGold && auto && repo.prefs.gold24Gram > 0) unit = fmtPlain(Math.round(repo.prefs.goldGram(karat) * 100) / 100.0)
@@ -86,8 +96,12 @@ fun AccountScreen(snap: Snapshot, id: Long) {
         name = name.ifBlank { defaultName }, type = type.name, currency = currency, bank = bank.ifBlank { null }?.uppercase(),
         smsHints = hints, creditLimit = parseNum(limit) ?: 0.0, quantity = parseNum(qty), unitPrice = parseNum(unit),
         annualRate = parseNum(rate), maturity = maturity, note = note.ifBlank { null }, includeInNetWorth = inNet, archived = archived,
-        karat = if (isGold) karat else a0.karat, symbol = symbol.trim().uppercase().ifBlank { null },
-        costBasis = parseNum(cost), autoPrice = auto,
+        karat = if (isGold) karat else a0.karat,
+        costBasis = parseNum(cost),
+        autoPrice = if (isStock) source != "MANUAL" else auto,
+        symbol = if (isStock && source == "YAHOO") symbol.trim().uppercase().ifBlank { null } else if (isStock) null else a0.symbol,
+        priceUrl = if (isStock && source == "WEB") priceUrl.trim().ifBlank { null } else null,
+        priceAnchor = if (isStock && source == "WEB") anchor.trim().ifBlank { null } else null,
     )
 
     Column(Modifier.fillMaxSize()) {
@@ -148,34 +162,82 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                 NumberField(tr("Grams (gold pound = 8 g of 21k)", "الجرامات (الجنيه الدهب = ٨ جرام عيار ٢١)"), qty, { qty = it })
             }
             if (isStock) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextField1(tr("Symbol (COMI.CA, AAPL…)", "الرمز (COMI.CA، AAPL…)"), symbol, { symbol = it }, Modifier.weight(1f))
-                    OutlinedButton(onClick = {
-                        quote = "…"
-                        scope.launch {
-                            quote = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.moneyfen.app.data.Prices.yahoo(symbol) } }
-                                .fold({ q ->
-                                    if (q.currency == "EGP" || q.currency == "USD") currency = q.currency
-                                    unit = fmtPlain(q.price); "✔ ${q.price} ${q.currency}"
-                                }, { "✘ ${it.message}" })
-                        }
-                    }) { Text(tr("Check", "اتأكد")) }
+                val io = kotlinx.coroutines.Dispatchers.IO
+                val nothingFound = tr("Nothing found", "ملقتش حاجة")
+                Text(tr("Price source", "مصدر السعر"), fontWeight = FontWeight.SemiBold)
+                val opts = listOf("YAHOO" to tr("Yahoo (stocks)", "Yahoo (أسهم)"), "WEB" to tr("Web page", "صفحة ويب"), "MANUAL" to tr("Manual", "يدوي"))
+                androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    opts.forEachIndexed { i, (k, label) ->
+                        androidx.compose.material3.SegmentedButton(source == k, { source = k; quote = null },
+                            androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(label, maxLines = 1) }
+                    }
                 }
-                Text(tr("Egyptian stocks end with .CA (e.g. COMI.CA = CIB). Search the symbol on finance.yahoo.com.",
-                    "أسهم البورصة المصرية بتنتهي بـ .CA (مثلاً COMI.CA = CIB). دوّر على الرمز في finance.yahoo.com."), style = MaterialTheme.typography.bodySmall)
+                when (source) {
+                    "YAHOO" -> {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextField1(tr("Search by name", "دوّر بالاسم"), searchQ, { searchQ = it }, Modifier.weight(1f))
+                            OutlinedButton(onClick = {
+                                quote = "…"
+                                scope.launch {
+                                    runCatching { kotlinx.coroutines.withContext(io) { com.moneyfen.app.data.Prices.search(searchQ) } }
+                                        .onSuccess { hits = it; quote = if (it.isEmpty()) nothingFound else null }
+                                        .onFailure { quote = "✘ ${it.message}" }
+                                }
+                            }) { Text(tr("Search", "دوّر")) }
+                        }
+                        hits.forEach { h ->
+                            ClickRow(h.symbol, "${h.name} · ${h.exchange} · ${h.type}") { symbol = h.symbol; hits = emptyList() }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextField1(tr("Symbol (COMI.CA, AAPL…)", "الرمز (COMI.CA، AAPL…)"), symbol, { symbol = it }, Modifier.weight(1f))
+                            OutlinedButton(onClick = {
+                                quote = "…"
+                                scope.launch {
+                                    quote = runCatching { kotlinx.coroutines.withContext(io) { com.moneyfen.app.data.Prices.yahoo(symbol) } }
+                                        .fold({ q ->
+                                            if (q.currency == "EGP" || q.currency == "USD") currency = q.currency
+                                            unit = fmtPlain(q.price); "✔ ${q.price} ${q.currency}"
+                                        }, { "✘ ${it.message}" })
+                                }
+                            }) { Text(tr("Check", "اتأكد")) }
+                        }
+                        Text(tr("Egyptian stocks end with .CA (COMI.CA = CIB). Mutual funds are usually not on Yahoo: use Web page or Manual.",
+                            "أسهم البورصة المصرية بتنتهي بـ .CA (COMI.CA = CIB). صناديق الاستثمار غالباً مش على Yahoo: استخدم صفحة ويب أو يدوي."),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    "WEB" -> {
+                        TextField1(tr("Page link that shows the price", "لينك الصفحة اللي فيها السعر"), priceUrl, { priceUrl = it })
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextField1(tr("Text right before the price", "النص اللي قبل السعر على طول"), anchor, { anchor = it }, Modifier.weight(1f))
+                            OutlinedButton(onClick = {
+                                quote = "…"
+                                scope.launch {
+                                    quote = runCatching { kotlinx.coroutines.withContext(io) { com.moneyfen.app.data.Prices.fromUrl(priceUrl, anchor) } }
+                                        .fold({ p -> unit = fmtPlain(p); "✔ $p" }, { "✘ ${it.message}" })
+                                }
+                            }) { Text(tr("Test", "جرّب")) }
+                        }
+                        Text(tr(
+                            "Example: the fund's page on the bank/fund manager site, and the text \"NAV\" or \"سعر الوثيقة\". The app takes the first number after that text. If the page loads the price with JavaScript it won't work: use Manual.",
+                            "مثال: صفحة الصندوق على موقع البنك أو الشركة، والنص \"سعر الوثيقة\" أو \"NAV\". الأبلكيشن بياخد أول رقم بعد النص ده. لو الصفحة بتحمّل السعر بجافاسكريبت مش هتشتغل: استخدم يدوي.",
+                        ), style = MaterialTheme.typography.bodySmall)
+                    }
+                    else -> Text(tr("Type the current unit price below and update it whenever you like.",
+                        "اكتب سعر الوثيقة/السهم تحت وحدّثه وقت ما تحب."), style = MaterialTheme.typography.bodySmall)
+                }
                 quote?.let { Text(it) }
-                NumberField(tr("Number of shares", "عدد الأسهم"), qty, { qty = it })
+                NumberField(if (type == AccountType.FUND) tr("Number of units", "عدد الوثائق") else tr("Number of shares", "عدد الأسهم"), qty, { qty = it })
             }
             if (isHolding) {
                 NumberField(tr("Total paid ($currency)", "إجمالي اللي دفعته ($currency)"), cost, { cost = it })
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isGold) Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(tr("Live price", "سعر لايف"))
                         Text(tr("Updated from the internet automatically", "بيتحدث من النت أوتوماتيك"), style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(auto, { auto = it })
                 }
-                NumberField(if (isGold) tr("Price per gram", "سعر الجرام") else tr("Price per share", "سعر السهم"), unit, { unit = it; auto = false })
+                NumberField(if (isGold) tr("Price per gram", "سعر الجرام") else tr("Unit price now", "سعر الوحدة دلوقتي"), unit, { unit = it; if (isGold) auto = false })
                 val q = parseNum(qty) ?: 0.0
                 val v = q * (parseNum(unit) ?: 0.0)
                 val c = parseNum(cost)
@@ -208,7 +270,7 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                     if (id == 0L && init != null && !isHolding) {
                         repo.setBalance(a.copy(id = newId), if (type.liability) -abs(init) else init)
                     }
-                    if (isHolding && auto) ctx.app.appScope.launch { com.moneyfen.app.data.Prices.refreshAll(repo) }
+                    if (isHolding && (if (isStock) source != "MANUAL" else auto)) ctx.app.appScope.launch { com.moneyfen.app.data.Prices.refreshAll(repo) }
                     nav.popBackStack()
                 }
             }) { Text(tr("Save", "حفظ")) }

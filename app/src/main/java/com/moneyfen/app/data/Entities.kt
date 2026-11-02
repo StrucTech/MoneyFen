@@ -13,6 +13,7 @@ enum class AccountType(val liability: Boolean, val emoji: String, val en: String
     WALLET(false, "📱", "Wallet", "محفظة"),
     GOLD(false, "🥇", "Gold", "دهب"),
     STOCK(false, "📊", "Stocks", "أسهم"),
+    FUND(false, "🏛️", "Mutual fund", "صندوق استثمار"),
     CERTIFICATE(false, "📜", "Certificate", "شهادة"),
     DEPOSIT(false, "🔒", "Deposit", "وديعة"),
     INVESTMENT(false, "📈", "Investment", "استثمار"),
@@ -57,8 +58,12 @@ data class AccountEntity(
     /** Update [unitPrice] automatically from the internet. */
     @ColumnInfo(defaultValue = "1") val autoPrice: Boolean = true,
     val priceAt: Long? = null,
+    /** Web page that shows the price (for funds not on Yahoo). */
+    val priceUrl: String? = null,
+    /** Text written just before the price on that page (or a regex with one group). */
+    val priceAnchor: String? = null,
 ) {
-    val isHolding: Boolean get() = accountType == AccountType.GOLD || accountType == AccountType.STOCK
+    val isHolding: Boolean get() = accountType == AccountType.GOLD || accountType == AccountType.STOCK || accountType == AccountType.FUND
     val accountType: AccountType get() = runCatching { AccountType.valueOf(type) }.getOrDefault(AccountType.OTHER_ASSET)
     fun hints(): List<String> = smsHints.split(',', ' ').map { it.trim() }.filter { it.isNotEmpty() }
 }
