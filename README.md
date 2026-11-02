@@ -5,9 +5,8 @@ tracks your accounts, balances, net worth and savings plan. **100% free**, no AI
 
 ## Install on your phone
 
-1. Open the repo on GitHub → **Actions** → **Build APK** → the latest green run → download **MoneyFen-apk**.
-   (Or **Releases**, if the code is on `main`.)
-2. Unzip it and open `MoneyFen-xx.apk` on your phone → allow "Install unknown apps".
+1. From your phone open: **https://github.com/StrucTech/MoneyFen/releases** → the latest build → download `MoneyFen-xx.apk`.
+2. Open the file → allow "Install unknown apps". (Any new version installs over the old one and your data is kept.)
 3. On first launch: pick a language → **Import all bank SMS from phone** → grant SMS permission.
    It imports your full history and creates the accounts automatically.
 

@@ -1,6 +1,5 @@
 <resources>
     <style name="Theme.MoneyFen" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
         <item name="colorPrimary">#00695C</item>
     </style>
 </resources>
