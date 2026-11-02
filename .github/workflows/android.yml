@@ -1,0 +1,57 @@
+name: Build APK
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Use private signing key (optional)
+        env:
+          KEYSTORE_B64: ${{ secrets.MONEYFEN_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "MONEYFEN_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          fi
+
+      - name: Unit tests (SMS parser)
+        run: ./gradlew :core:test --no-daemon
+
+      - name: Build APK
+        env:
+          MONEYFEN_KEYSTORE_PASSWORD: ${{ secrets.MONEYFEN_KEYSTORE_PASSWORD }}
+          MONEYFEN_KEY_ALIAS: ${{ secrets.MONEYFEN_KEY_ALIAS }}
+          MONEYFEN_KEY_PASSWORD: ${{ secrets.MONEYFEN_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/app-release.apk MoneyFen-${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MoneyFen-apk
+          path: MoneyFen-*.apk
+
+      - name: Publish as release (main branch)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: MoneyFen build ${{ github.run_number }}
+          files: MoneyFen-*.apk

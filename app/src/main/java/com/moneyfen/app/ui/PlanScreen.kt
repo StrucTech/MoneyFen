@@ -1,0 +1,201 @@
+package com.moneyfen.app.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.moneyfen.app.data.AccountEntity
+import com.moneyfen.app.data.CategoryType
+import com.moneyfen.app.data.GoalEntity
+import com.moneyfen.app.data.Snapshot
+import com.moneyfen.app.data.monthRange
+import com.moneyfen.core.PlanMath
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlanScreen(snap: Snapshot) {
+    val repo = LocalRepo.current
+    val nav = LocalNav.current
+    val scope = rememberCoroutineScope()
+    val (from, to) = monthRange()
+    val month = snap.totals(from, to)
+    var editBudgets by remember { mutableStateOf(false) }
+    var pct by remember { mutableFloatStateOf(repo.prefs.savingsPercent.toFloat()) }
+
+    // Average of the last 3 complete months, for context
+    val avg = (-3..-1).map { o -> monthRange(o).let { (f, t) -> snap.totals(f, t) } }
+    val avgIncome = avg.map { it.income }.average()
+    val avgExpense = avg.map { it.expense }.average()
+
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(title = { Text(tr("Savings plan", "خطة الادخار")) })
+        LazyColumn(Modifier.fillMaxSize()) {
+            item {
+                SectionCard(tr("Save a fixed % of income", "ادخر نسبة ثابتة من الدخل")) {
+                    Text("${pct.toInt()}%", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Slider(pct, { pct = it }, valueRange = 0f..80f, steps = 15, onValueChangeFinished = { repo.prefs.savingsPercent = pct.toInt() })
+                    val target = month.income * pct / 100
+                    LabelValue(tr("Income this month", "دخل الشهر ده"), money(month.income))
+                    LabelValue(tr("Should save", "المفروض تحوش"), money(target))
+                    LabelValue(tr("Saved so far", "حوشت لحد دلوقتي"), money(month.saved), amountColor(month.saved - target))
+                    LabelValue(tr("Left to spend this month", "تقدر تصرف باقي الشهر"), money(month.income - target - month.expense), amountColor(month.income - target - month.expense))
+                    if (target > 0) ProgressLine((month.saved / target).toFloat(), over = month.saved < 0)
+                    Spacer(Modifier.height(6.dp))
+                    Text(tr("Avg last 3 months: income ", "متوسط آخر ٣ شهور: دخل ") + money(avgIncome, false) +
+                        tr(" · spent ", " · مصروف ") + money(avgExpense, false), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            item {
+                SectionCard(tr("Goals", "الأهداف"), action = {
+                    IconButton(onClick = { nav.navigate("goal/0") }) { Icon(Icons.Default.Add, null) }
+                }) {
+                    if (snap.goals.isEmpty()) Text(tr("Add a goal: amount + date, and see how much to save monthly.", "ضيف هدف: مبلغ + تاريخ، وهتعرف تحوش كام كل شهر."))
+                    snap.goals.forEach { g ->
+                        val current = goalCurrent(snap, g)
+                        val monthly = PlanMath.monthlyNeeded(g.target, current, System.currentTimeMillis(), g.deadline)
+                        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                            ClickRow("${g.emoji} ${g.name}", "${money(current, false)} / ${money(g.target, false)} · ${dateFmt(g.deadline)}",
+                                if (current >= g.target) "✅" else "${(current / g.target * 100).toInt()}%") { nav.navigate("goal/${g.id}") }
+                            ProgressLine((current / g.target).toFloat())
+                            if (current < g.target) Text(tr("Save ", "حوّش ") + money(monthly, false) + tr(" / month", " في الشهر") +
+                                " (${PlanMath.monthsLeft(System.currentTimeMillis(), g.deadline)} " + tr("months", "شهر") + ")",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+            item {
+                val budgeted = snap.categories.filter { it.categoryType == CategoryType.EXPENSE && (it.monthlyBudget ?: 0.0) > 0 }
+                SectionCard(tr("Monthly budgets", "ميزانية الشهر"), action = {
+                    IconButton(onClick = { editBudgets = true }) { Icon(Icons.Default.Edit, null) }
+                }) {
+                    if (budgeted.isEmpty()) Text(tr("Set a monthly limit per category (tap ✎).", "حط حد شهري لكل تصنيف (اضغط ✎)."))
+                    var totalB = 0.0; var totalS = 0.0
+                    budgeted.forEach { c ->
+                        val spent = month.expenseByCategory[c.id] ?: 0.0
+                        val b = c.monthlyBudget ?: 0.0
+                        totalB += b; totalS += spent
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            Row { Text(catName(c), Modifier.weight(1f)); Text("${money(spent, false)} / ${money(b, false)}", color = amountColor(b - spent)) }
+                            ProgressLine((spent / b).toFloat(), over = spent > b)
+                        }
+                    }
+                    if (budgeted.isNotEmpty()) LabelValue(tr("Total", "الإجمالي"), "${money(totalS, false)} / ${money(totalB, false)}", amountColor(totalB - totalS))
+                }
+            }
+        }
+    }
+
+    if (editBudgets) {
+        val cats = snap.categories.filter { it.categoryType == CategoryType.EXPENSE }
+        val values = remember { mutableStateMapOf<Long, String>().apply { cats.forEach { put(it.id, it.monthlyBudget?.let(::fmtPlain) ?: "") } } }
+        AlertDialog(
+            onDismissRequest = { editBudgets = false },
+            title = { Text(tr("Monthly budgets", "ميزانية الشهر")) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    cats.forEach { c ->
+                        val avgSpent = (-3..-1).map { o -> monthRange(o).let { (f, t) -> snap.totals(f, t).expenseByCategory[c.id] ?: 0.0 } }.average()
+                        NumberField(catName(c) + tr(" (avg ", " (متوسط ") + fmt0(avgSpent) + ")", values[c.id] ?: "", { values[c.id] = it })
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { cats.forEach { c -> repo.saveCategory(c.copy(monthlyBudget = parseNum(values[c.id] ?: "")?.takeIf { it > 0 })) } }
+                    editBudgets = false
+                }) { Text(tr("Save", "حفظ")) }
+            },
+            dismissButton = { TextButton(onClick = { editBudgets = false }) { Text(tr("Cancel", "إلغاء")) } },
+        )
+    }
+}
+
+fun goalCurrent(snap: Snapshot, g: GoalEntity): Double =
+    g.accountId?.let { snap.accountById[it]?.balanceEgp } ?: g.saved
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GoalEditScreen(snap: Snapshot, id: Long) {
+    val repo = LocalRepo.current
+    val nav = LocalNav.current
+    val scope = rememberCoroutineScope()
+    val g0 = snap.goals.firstOrNull { it.id == id } ?: GoalEntity(name = "", target = 0.0, deadline = System.currentTimeMillis() + 365L * 86_400_000)
+    var name by remember(id) { mutableStateOf(g0.name) }
+    var emoji by remember(id) { mutableStateOf(g0.emoji) }
+    var target by remember(id) { mutableStateOf(if (g0.target > 0) fmtPlain(g0.target) else "") }
+    var deadline by remember(id) { mutableStateOf(g0.deadline) }
+    var saved by remember(id) { mutableStateOf(fmtPlain(g0.saved)) }
+    var account by remember(id) { mutableStateOf(g0.accountId) }
+    var confirm by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text(if (id == 0L) tr("New goal", "هدف جديد") else g0.name) },
+            navigationIcon = { IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
+            actions = { if (id != 0L) IconButton(onClick = { confirm = true }) { Icon(Icons.Default.Delete, null) } },
+        )
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextField1(tr("Icon", "أيقونة"), emoji, { emoji = it.take(2) }, Modifier.weight(1f))
+                TextField1(tr("Name", "الاسم"), name, { name = it }, Modifier.weight(4f))
+            }
+            NumberField(tr("Target amount", "المبلغ المطلوب"), target, { target = it })
+            DateField(tr("By", "قبل"), deadline, { deadline = it })
+            val accounts = snap.accounts.map { it.account }.filter { !it.accountType.liability }
+            Picker(tr("Track with account", "اربطه بحساب"), listOf<AccountEntity?>(null) + accounts, accounts.firstOrNull { it.id == account },
+                { it?.let { a -> "${a.accountType.emoji} ${a.name}" } ?: tr("— manual amount —", "— مبلغ يدوي —") }, { account = it?.id })
+            if (account == null) NumberField(tr("Saved so far", "حوشت لحد دلوقتي"), saved, { saved = it })
+            val t = parseNum(target) ?: 0.0
+            if (t > 0) {
+                val cur = account?.let { snap.accountById[it]?.balanceEgp } ?: parseNum(saved) ?: 0.0
+                Text(tr("Needed per month: ", "محتاج تحوش في الشهر: ") + money(PlanMath.monthlyNeeded(t, cur, System.currentTimeMillis(), deadline)),
+                    fontWeight = FontWeight.SemiBold)
+            }
+            Button(modifier = Modifier.fillMaxWidth(), onClick = {
+                val tv = parseNum(target) ?: return@Button
+                scope.launch {
+                    repo.saveGoal(g0.copy(name = name.ifBlank { "Goal" }, emoji = emoji.ifBlank { "🎯" }, target = tv, deadline = deadline,
+                        accountId = account, saved = parseNum(saved) ?: 0.0))
+                    nav.popBackStack()
+                }
+            }) { Text(tr("Save", "حفظ")) }
+        }
+    }
+    if (confirm) ConfirmDialog(tr("Delete goal?", "تمسح الهدف؟"), g0.name, { scope.launch { repo.deleteGoal(g0); nav.popBackStack() } }, { confirm = false })
+}
