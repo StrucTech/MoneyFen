@@ -20,9 +20,10 @@ object Seed {
         CategoryEntity(key = "sent", nameEn = "Sent to people", nameAr = "تحويلات لناس", emoji = "📤", type = E, sortOrder = 11),
         CategoryEntity(key = "other", nameEn = "Other", nameAr = "أخرى", emoji = "❓", type = E, sortOrder = 12),
         CategoryEntity(key = "salary", nameEn = "Salary", nameAr = "مرتب", emoji = "💼", type = I, sortOrder = 20),
-        CategoryEntity(key = "received", nameEn = "Received transfers", nameAr = "تحويلات واردة", emoji = "📥", type = I, sortOrder = 21),
-        CategoryEntity(key = "refund", nameEn = "Refunds & cashback", nameAr = "مرتجعات وكاش باك", emoji = "↩️", type = I, sortOrder = 22),
-        CategoryEntity(key = "deposit", nameEn = "Cash deposit", nameAr = "إيداع كاش", emoji = "💰", type = I, sortOrder = 23),
+        CategoryEntity(key = "freelance", nameEn = "Freelance", nameAr = "فريلانس", emoji = "💻", type = I, sortOrder = 21),
+        CategoryEntity(key = "received", nameEn = "Received (not income)", nameAr = "تحويلات واردة (مش دخل)", emoji = "📥", type = T, sortOrder = 31),
+        CategoryEntity(key = "refund", nameEn = "Refunds & cashback", nameAr = "مرتجعات وكاش باك", emoji = "↩️", type = E, sortOrder = 13),
+        CategoryEntity(key = "deposit", nameEn = "Cash deposit", nameAr = "إيداع كاش", emoji = "💰", type = T, sortOrder = 32),
         CategoryEntity(key = "other_income", nameEn = "Other income", nameAr = "دخل آخر", emoji = "➕", type = I, sortOrder = 24),
         CategoryEntity(key = "internal", nameEn = "Between my accounts", nameAr = "بين حساباتي", emoji = "🔁", type = T, sortOrder = 30),
     )

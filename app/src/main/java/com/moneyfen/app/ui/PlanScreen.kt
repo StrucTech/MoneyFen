@@ -72,7 +72,7 @@ fun PlanScreen(snap: Snapshot) {
                     Text("${pct.toInt()}%", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Slider(pct, { pct = it }, valueRange = 0f..80f, steps = 15, onValueChangeFinished = { repo.prefs.savingsPercent = pct.toInt() })
                     val target = month.income * pct / 100
-                    LabelValue(tr("Income this month", "دخل الشهر ده"), money(month.income))
+                    ClickRow(tr("Income this month", "دخل الشهر ده"), tr("Choose income sources ›", "اختار مصادر الدخل ›"), money(month.income)) { nav.navigate("sources") }
                     LabelValue(tr("Should save", "المفروض تحوش"), money(target))
                     val setAside = snap.savedInto(from, to)
                     LabelValue(tr("Set aside in goals this month", "اتحجز في الأهداف الشهر ده"), money(setAside), amountColor(setAside - target))

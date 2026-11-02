@@ -159,6 +159,7 @@ fun SettingsScreen(snap: Snapshot) {
             }
             SectionCard(tr("Customize", "تخصيص")) {
                 ClickRow(tr("Categories & budgets", "التصنيفات والميزانيات"), "${snap.categories.size}", leading = "🗂️") { nav.navigate("categories") }
+                ClickRow(tr("Income sources", "مصادر الدخل"), tr("Choose which transfers are real income", "اختار التحويلات اللي هي دخل فعلاً"), leading = "💼") { nav.navigate("sources") }
                 ClickRow(tr("Auto-categorize rules", "قواعد التصنيف التلقائي"), "${snap.rules.size}", leading = "⚙️") { nav.navigate("rules") }
                 ClickRow(tr("Custom SMS templates (wallets, other banks)", "قوالب رسايل مخصصة (محافظ، بنوك تانية)"), "${snap.patterns.size}", leading = "✉️") { nav.navigate("patterns") }
                 OutlinedButton(onClick = { scope.launch { val n = repo.reapplyRules(); msg = "✔ $n" } }, modifier = Modifier.fillMaxWidth()) {

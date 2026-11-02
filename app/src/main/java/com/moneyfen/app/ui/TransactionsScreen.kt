@@ -267,6 +267,19 @@ fun TxEditScreen(snap: Snapshot, id: Long, accountId: Long) {
                 }
                 if (split) ReviewDialog(existing) { split = false }
             }
+            if (existing != null && kindOf(existing).direction > 0 && kindOf(existing) != TxKind.SALARY) {
+                val incomeCat = snap.categories.firstOrNull { it.key == "freelance" } ?: snap.categories.firstOrNull { it.categoryType == CategoryType.INCOME }
+                val notIncomeCat = snap.categories.firstOrNull { it.key == "received" } ?: snap.categories.firstOrNull { it.categoryType == CategoryType.TRANSFER }
+                val isIncome = cat?.let { snap.categoryById[it] }?.categoryType == CategoryType.INCOME
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("Counts as income", "يتحسب دخل"))
+                        Text(tr("For all transfers from this name use Income sources", "لكل تحويلات الاسم ده استخدم مصادر الدخل"), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(isIncome, { on -> cat = (if (on) incomeCat else notIncomeCat)?.id })
+                }
+                TextButton(onClick = { nav.navigate("sources") }) { Text(tr("Income sources →", "مصادر الدخل ←")) }
+            }
             if (existing != null && kindOf(existing).direction > 0) {
                 var saveOpen by remember { mutableStateOf(false) }
                 val savedFrom = snap.moves.filter { it.txId == existing.id }.sumOf { it.amount }

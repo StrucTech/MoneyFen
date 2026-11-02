@@ -195,11 +195,53 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
     }
 
     suspend fun ensureSeeded() {
-        if (db.categories().all().isNotEmpty()) return
+        if (db.categories().all().isNotEmpty()) { upgradeSeed(); return }
+        prefs.seedVersion = 2
         db.categories().insertAll(Seed.categories)
         val cats = db.categories().all().associateBy { it.key }
         val n = Seed.rules.size
         db.rules().insertAll(Seed.rules.mapIndexed { i, (p, key) -> RuleEntity(pattern = p, categoryId = cats[key]?.id, priority = n - i) })
+    }
+
+    /** v2: only chosen sources are income. Received transfers & deposits aren't income, refunds reduce spending. */
+    private suspend fun upgradeSeed() {
+        if (prefs.seedVersion >= 2) return
+        val cats = db.categories().all()
+        fun upd(key: String, f: (CategoryEntity) -> CategoryEntity) = cats.firstOrNull { it.key == key }?.let(f)
+        listOfNotNull(
+            upd("received") { it.copy(type = CategoryType.TRANSFER.name, nameEn = "Received (not income)", nameAr = "تحويلات واردة (مش دخل)", sortOrder = 31) },
+            upd("deposit") { it.copy(type = CategoryType.TRANSFER.name, sortOrder = 32) },
+            upd("refund") { it.copy(type = CategoryType.EXPENSE.name, sortOrder = 13) },
+        ).forEach { db.categories().upsert(it) }
+        if (cats.none { it.key == "freelance" }) db.categories().upsert(Seed.categories.first { it.key == "freelance" })
+        prefs.seedVersion = 2
+    }
+
+    /** People/companies that sent me money, with the rule that makes them income (if any). */
+    data class Source(val party: String, val count: Int, val total: Double, val last: Long, val rule: RuleEntity?)
+
+    fun incomeSources(snap: Snapshot): List<Source> {
+        val kinds = setOf(TxKind.TRANSFER_IN, TxKind.DEPOSIT, TxKind.MANUAL_IN)
+        return snap.txs.filter { kindOf(it) in kinds && !it.party.isNullOrBlank() && it.note != REIMBURSED }
+            .groupBy { it.party!!.trim() }
+            .map { (p, l) ->
+                Source(p, l.size, l.sumOf { snap.toEgp(it.amount, it.currency) }, l.maxOf { it.time },
+                    snap.rules.firstOrNull { it.pattern.equals(p, true) })
+            }.sortedByDescending { it.total }
+    }
+
+    /** Make a sender an income source (category) and/or ask-to-save; removes the rule when neither. */
+    suspend fun setSource(party: String, incomeCategory: Long?, savePercent: Double?) {
+        val existing = db.rules().all().filter { it.pattern.equals(party, true) }
+        val keep = existing.firstOrNull()
+        existing.drop(1).forEach { db.rules().delete(it) }
+        if (incomeCategory == null && savePercent == null && (keep?.renameTo.isNullOrBlank()) && keep?.exclude != true) {
+            keep?.let { db.rules().delete(it) }
+        } else {
+            val maxP = (db.rules().all().maxOfOrNull { it.priority } ?: 0) + 1
+            db.rules().upsert((keep ?: RuleEntity(pattern = party, priority = maxP)).copy(categoryId = incomeCategory, savePercent = savePercent))
+        }
+        reapplyRules()
     }
 
     // ---------------------------------------------------------------- SMS ingestion

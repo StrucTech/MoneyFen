@@ -118,6 +118,7 @@ private fun AppScaffold(nav: NavHostController, snap: Snapshot) {
             composable("rules") { RulesScreen(snap) }
             composable("patterns") { PatternsScreen(snap) }
             composable("backup") { BackupScreen() }
+            composable("sources") { IncomeSourcesScreen(snap) }
             composable("goal/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
                 GoalEditScreen(snap, it.arguments?.getLong("id") ?: 0L)
             }

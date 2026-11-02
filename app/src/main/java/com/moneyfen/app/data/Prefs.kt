@@ -38,6 +38,10 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("onboarded", false)
         set(v) { sp.edit { putBoolean("onboarded", v) }; bump() }
 
+    var seedVersion: Int
+        get() = sp.getInt("seedVersion", 1)
+        set(v) { sp.edit { putInt("seedVersion", v) }; bump() }
+
     var hideAmounts: Boolean
         get() = sp.getBoolean("hideAmounts", false)
         set(v) { sp.edit { putBoolean("hideAmounts", v) }; bump() }
