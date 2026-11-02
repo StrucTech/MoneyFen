@@ -38,6 +38,8 @@ data class Snapshot(
     val goals: List<GoalEntity> = emptyList(),
     val patterns: List<SmsPatternEntity> = emptyList(),
     val statements: List<StatementEntity> = emptyList(),
+    val moves: List<GoalMoveEntity> = emptyList(),
+    val safeExclude: Set<Long> = emptySet(),
     val usdRate: Double = 50.0,
     val loaded: Boolean = false,
 ) {
@@ -63,6 +65,36 @@ data class Snapshot(
 
     /** Balance minus what is reserved for goals. */
     fun free(av: AccountView): Double = av.balance - reserved(av.account.id)
+
+    /** Accounts that can count in "safe to spend". */
+    fun safeCandidates(): List<AccountView> = accounts.filter {
+        !it.account.archived && it.account.accountType in setOf(AccountType.BANK, AccountType.CASH, AccountType.WALLET, AccountType.CREDIT_CARD)
+    }
+
+    data class Safe(val cash: Double, val reserved: Double, val cardDebt: Double) {
+        val free get() = cash - reserved
+        val safe get() = free - cardDebt
+    }
+
+    /** Money I can spend without ending up in debt: free balances (after goals) minus credit card debt. */
+    fun safeToSpend(): Safe {
+        var cash = 0.0; var reserved = 0.0; var debt = 0.0
+        for (av in safeCandidates()) {
+            if (av.account.id in safeExclude) continue
+            if (av.account.accountType == AccountType.CREDIT_CARD) debt += maxOf(0.0, -av.balanceEgp)
+            else {
+                cash += av.balanceEgp
+                val r = reserved(av.account.id)
+                reserved += if (av.account.currency == "USD") r * usdRate else r
+            }
+        }
+        return Safe(cash, reserved, debt)
+    }
+
+    /** Total put into goals in a period (minus taken out). */
+    fun savedInto(from: Long, to: Long): Double = moves.filter { it.time in from until to }.sumOf { it.amount }
+
+    val incomeToReview: List<TxEntity> get() = toReview.filter { kindOf(it).direction > 0 }
 
     fun goalCurrent(g: GoalEntity): Double =
         if (g.wholeAccount && g.accountId != null) accountById[g.accountId]?.balanceEgp ?: 0.0 else g.saved
@@ -122,8 +154,8 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
 
     val snapshot: Flow<Snapshot> = combine(
         combine(db.accounts().observe(), db.txs().observe(), db.categories().observe(), prefs.version) { a, t, c, _ -> Triple(a, t, c) },
-        combine(db.rules().observe(), db.goals().observe(), db.patterns().observe(), db.statements().observe()) { r, g, p, s ->
-            listOf(r, g, p, s)
+        combine(db.rules().observe(), db.goals().observe(), db.patterns().observe(), db.statements().observe(), db.goalMoves().observe()) { r, g, p, s, m ->
+            listOf(r, g, p, s, m)
         },
     ) { (accounts, txs, cats), rest ->
         @Suppress("UNCHECKED_CAST")
@@ -131,6 +163,7 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
             txs = txs, categories = cats,
             rules = rest[0] as List<RuleEntity>, goals = rest[1] as List<GoalEntity>,
             patterns = rest[2] as List<SmsPatternEntity>, statements = rest[3] as List<StatementEntity>,
+            moves = rest[4] as List<GoalMoveEntity>, safeExclude = prefs.safeExclude,
             usdRate = prefs.usdRate, loaded = true,
         )
         val byAccount = txs.groupBy { it.accountId }
@@ -267,13 +300,56 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
         if (t.categoryLocked) return t
         val k = kindOf(t)
         val ruleable = k !in setOf(TxKind.SALARY, TxKind.CC_PAYMENT, TxKind.CASHBACK, TxKind.ADJUSTMENT)
-        val rule = if (ruleable) rules.firstOrNull { RuleMatcher.matches(it.pattern, t.party) } else null
+        val rule = if (ruleable) rules.firstOrNull {
+            (it.categoryId != null || !it.renameTo.isNullOrBlank() || it.exclude) && RuleMatcher.matches(it.pattern, t.party)
+        } else null
         val catId = rule?.categoryId ?: cats.firstOrNull { it.key == defaultCategoryKey(k) }?.id
         return t.copy(
             categoryId = catId,
             party = rule?.renameTo?.takeIf { it.isNotBlank() } ?: t.party,
             excluded = t.excluded || (rule?.exclude == true),
         )
+    }
+
+    private fun saveRuleFor(k: TxKind, party: String?, rules: List<RuleEntity>): RuleEntity? =
+        if (k.direction <= 0) null else rules.firstOrNull { it.savePercent != null && RuleMatcher.matches(it.pattern, party) }
+
+    /** Suggested amount to save from an income (rule %, or salary % / fixed amount). */
+    suspend fun suggestedSave(t: TxEntity): Double {
+        val amt = if (t.currency == "USD") t.amount * prefs.usdRate else t.amount
+        saveRuleFor(kindOf(t), t.party, db.rules().all())?.savePercent?.let { return amt * it / 100 }
+        return if (prefs.salaryMode == "FIXED" && prefs.salaryFixed > 0) minOf(prefs.salaryFixed, amt)
+        else amt * prefs.savingsPercent / 100
+    }
+
+    private suspend fun savingsPot(accountId: Long): GoalEntity {
+        db.goals().all().firstOrNull { it.target == 0.0 && it.accountId == accountId && !it.wholeAccount }?.let { return it }
+        val g = GoalEntity(name = "Savings · التحويش", emoji = "🐷", target = 0.0, deadline = 0, accountId = accountId)
+        return g.copy(id = db.goals().upsert(g))
+    }
+
+    /** Put [amount] of an income into a goal (or the savings pot of that account). Re-deciding replaces the old choice. */
+    suspend fun saveFromIncome(txId: Long, amount: Double, goalId: Long?) = mutex.withLock {
+        val t = db.txs().get(txId) ?: return@withLock
+        for (m in db.goalMoves().forTx(txId)) {
+            db.goals().all().firstOrNull { it.id == m.goalId }?.let { g -> db.goals().upsert(g.copy(saved = maxOf(0.0, g.saved - m.amount))) }
+            db.goalMoves().delete(m)
+        }
+        if (amount > 0.004) {
+            val g = goalId?.let { id -> db.goals().all().firstOrNull { it.id == id } } ?: savingsPot(t.accountId)
+            db.goals().upsert(g.copy(saved = g.saved + amount))
+            db.goalMoves().insert(GoalMoveEntity(goalId = g.id, time = t.time, amount = amount, txId = t.id, note = t.party))
+            prefs.lastSaveGoal = g.id
+        }
+        db.txs().upsert(t.copy(needsReview = false))
+        Unit
+    }
+
+    /** Manual + / - on a goal, logged in history. */
+    suspend fun moveGoal(g: GoalEntity, delta: Double, note: String? = null) {
+        val newSaved = maxOf(0.0, g.saved + delta)
+        db.goals().upsert(g.copy(saved = newSaved))
+        db.goalMoves().insert(GoalMoveEntity(goalId = g.id, amount = newSaved - g.saved, note = note))
     }
 
     private fun shouldReview(k: TxKind): Boolean =
@@ -285,7 +361,8 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
         var t = TxEntity(
             accountId = acc.id, time = time, amount = p.amount, currency = p.currency, kind = p.kind.name,
             party = p.party, reference = p.reference, balanceAfter = p.balanceAfter, availableAfter = p.availableAfter,
-            smsHash = h, smsBody = body, needsReview = live && shouldReview(p.kind),
+            smsHash = h, smsBody = body,
+            needsReview = live && (shouldReview(p.kind) || saveRuleFor(p.kind, p.party, rules) != null || (p.kind == TxKind.SALARY && prefs.askSalary)),
         )
         t = categorize(t, rules, cats)
         t = t.copy(id = db.txs().upsert(t))
@@ -416,7 +493,7 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
     suspend fun saveRule(r: RuleEntity) = db.rules().upsert(r)
     suspend fun deleteRule(r: RuleEntity) = db.rules().delete(r)
     suspend fun saveGoal(g: GoalEntity) = db.goals().upsert(g)
-    suspend fun deleteGoal(g: GoalEntity) = db.goals().delete(g)
+    suspend fun deleteGoal(g: GoalEntity) { db.goalMoves().deleteForGoal(g.id); db.goals().delete(g) }
     suspend fun savePattern(p: SmsPatternEntity) = db.patterns().upsert(p)
     suspend fun deletePattern(p: SmsPatternEntity) = db.patterns().delete(p)
 

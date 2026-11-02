@@ -125,6 +125,8 @@ data class RuleEntity(
     val renameTo: String? = null,
     val exclude: Boolean = false,
     val priority: Int = 0,
+    /** When income comes from this name, ask to save this % of it (null = don't ask). */
+    val savePercent: Double? = null,
 )
 
 @Serializable
@@ -164,4 +166,18 @@ data class StatementEntity(
     val amount: Double,
     val minDue: Double?,
     val dueDate: String?,
+)
+
+/** Every amount put into / taken out of a goal (history). */
+@Serializable
+@Entity(tableName = "goal_moves")
+data class GoalMoveEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val goalId: Long,
+    val time: Long = System.currentTimeMillis(),
+    /** + put in, - taken out */
+    val amount: Double,
+    /** The income transaction this saving came from. */
+    val txId: Long? = null,
+    val note: String? = null,
 )

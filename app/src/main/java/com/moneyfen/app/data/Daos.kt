@@ -90,3 +90,15 @@ interface StatementDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertAll(list: List<StatementEntity>)
     @Query("DELETE FROM statements") suspend fun clear()
 }
+
+@Dao
+interface GoalMoveDao {
+    @Query("SELECT * FROM goal_moves ORDER BY time DESC") fun observe(): Flow<List<GoalMoveEntity>>
+    @Query("SELECT * FROM goal_moves") suspend fun all(): List<GoalMoveEntity>
+    @Query("SELECT * FROM goal_moves WHERE txId = :txId") suspend fun forTx(txId: Long): List<GoalMoveEntity>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(m: GoalMoveEntity): Long
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertAll(list: List<GoalMoveEntity>)
+    @Delete suspend fun delete(m: GoalMoveEntity)
+    @Query("DELETE FROM goal_moves WHERE goalId = :goalId") suspend fun deleteForGoal(goalId: Long)
+    @Query("DELETE FROM goal_moves") suspend fun clear()
+}

@@ -270,6 +270,13 @@ fun AccountScreen(snap: Snapshot, id: Long) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(tr("Include in net worth", "يدخل في حساب الثروة"), Modifier.weight(1f)); Switch(inNet, { inNet = it })
             }
+            if (id != 0L && type in setOf(AccountType.BANK, AccountType.CASH, AccountType.WALLET, AccountType.CREDIT_CARD)) {
+                val counted = id !in snap.safeExclude
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("Counts in \"safe to spend\"", "يدخل في \"الآمن تصرفه\""), Modifier.weight(1f))
+                    Switch(counted, { on -> repo.prefs.safeExclude = if (on) repo.prefs.safeExclude - id else repo.prefs.safeExclude + id })
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(tr("Archived (hidden)", "مؤرشف (مخفي)"), Modifier.weight(1f)); Switch(archived, { archived = it })
             }

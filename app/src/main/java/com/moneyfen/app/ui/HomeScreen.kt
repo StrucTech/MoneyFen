@@ -74,6 +74,7 @@ fun HomeScreen(snap: Snapshot) {
             },
         )
         LazyColumn(Modifier.fillMaxSize()) {
+            if (snap.accounts.isNotEmpty()) item { SafeCard(snap) }
             item {
                 SectionCard(tr("Net worth", "صافي الثروة")) {
                     Text(money(snap.netWorth, currency = "EGP"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = amountColor(snap.netWorth))
@@ -85,13 +86,18 @@ fun HomeScreen(snap: Snapshot) {
             val review = snap.toReview
             if (review.isNotEmpty()) item {
                 var open by remember { mutableStateOf<com.moneyfen.app.data.TxEntity?>(null) }
-                SectionCard(tr("Was it really spending? (${review.size})", "صرف فعلاً ولا لأ؟ (${review.size})")) {
+                SectionCard(tr("Needs your decision (${review.size})", "محتاج قرارك (${review.size})")) {
                     review.take(10).forEach { t ->
-                        ClickRow(t.party ?: "", dateFmt(t.time, "dd MMM HH:mm") + " · " + (snap.accountById[t.accountId]?.account?.name ?: ""),
-                            money(t.amount) + if (t.currency != "EGP") " ${t.currency}" else "", amountColor(-1.0), leading = "❔") { open = t }
+                        val income = com.moneyfen.app.data.kindOf(t).direction > 0
+                        ClickRow(t.party ?: "",
+                            (if (income) tr("How much to save?", "هتحوش كام؟") else tr("Really spending?", "صرف فعلاً؟")) + " · " + dateFmt(t.time, "dd MMM HH:mm"),
+                            (if (income) "+" else "") + money(t.amount) + if (t.currency != "EGP") " ${t.currency}" else "",
+                            amountColor(if (income) 1.0 else -1.0), leading = if (income) "💰" else "❔") { open = t }
                     }
                 }
-                open?.let { ReviewDialog(it) { open = null } }
+                open?.let { t ->
+                    if (com.moneyfen.app.data.kindOf(t).direction > 0) SaveDialog(t, snap) { open = null } else ReviewDialog(t) { open = null }
+                }
             }
             item {
                 SectionCard(tr("This month", "الشهر ده")) {

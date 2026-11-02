@@ -74,9 +74,11 @@ fun PlanScreen(snap: Snapshot) {
                     val target = month.income * pct / 100
                     LabelValue(tr("Income this month", "دخل الشهر ده"), money(month.income))
                     LabelValue(tr("Should save", "المفروض تحوش"), money(target))
-                    LabelValue(tr("Saved so far", "حوشت لحد دلوقتي"), money(month.saved), amountColor(month.saved - target))
+                    val setAside = snap.savedInto(from, to)
+                    LabelValue(tr("Set aside in goals this month", "اتحجز في الأهداف الشهر ده"), money(setAside), amountColor(setAside - target))
+                    LabelValue(tr("Income − spending", "الدخل − المصروف"), money(month.saved), amountColor(month.saved))
                     LabelValue(tr("Left to spend this month", "تقدر تصرف باقي الشهر"), money(month.income - target - month.expense), amountColor(month.income - target - month.expense))
-                    if (target > 0) ProgressLine((month.saved / target).toFloat(), over = month.saved < 0)
+                    if (target > 0) ProgressLine((setAside / target).toFloat())
                     Spacer(Modifier.height(6.dp))
                     Text(tr("Avg last 3 months: income ", "متوسط آخر ٣ شهور: دخل ") + money(avgIncome, false) +
                         tr(" · spent ", " · مصروف ") + money(avgExpense, false), style = MaterialTheme.typography.bodySmall)
@@ -89,11 +91,13 @@ fun PlanScreen(snap: Snapshot) {
                     if (snap.goals.isEmpty()) Text(tr("Add a goal: amount + date, and see how much to save monthly.", "ضيف هدف: مبلغ + تاريخ، وهتعرف تحوش كام كل شهر."))
                     snap.goals.forEach { g ->
                         val current = goalCurrent(snap, g)
-                        val monthly = PlanMath.monthlyNeeded(g.target, current, System.currentTimeMillis(), g.deadline)
+                        val pot = g.target <= 0
+                        val monthly = if (pot) 0.0 else PlanMath.monthlyNeeded(g.target, current, System.currentTimeMillis(), g.deadline)
                         Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                            ClickRow("${g.emoji} ${g.name}", "${money(current, false)} / ${money(g.target, false)} · ${dateFmt(g.deadline)}",
+                            if (pot) ClickRow("${g.emoji} ${g.name}", tr("Open savings pot", "تحويش مفتوح"), money(current, false)) { nav.navigate("goal/${g.id}") }
+                            else ClickRow("${g.emoji} ${g.name}", "${money(current, false)} / ${money(g.target, false)} · ${dateFmt(g.deadline)}",
                                 if (current >= g.target) "✅" else "${(current / g.target * 100).toInt()}%") { nav.navigate("goal/${g.id}") }
-                            ProgressLine((current / g.target).toFloat())
+                            if (!pot) ProgressLine((current / g.target).toFloat())
                             g.accountId?.let { aid -> snap.accountById[aid] }?.let { av ->
                                 Text((if (g.wholeAccount) tr("Whole balance of ", "كل رصيد ") else tr("Reserved in ", "محجوز في ")) + av.account.name,
                                     style = MaterialTheme.typography.bodySmall)
@@ -102,7 +106,7 @@ fun PlanScreen(snap: Snapshot) {
                                 androidx.compose.material3.OutlinedButton(onClick = { move = g to 1 }) { Text(tr("+ Add", "+ حط فيه")) }
                                 androidx.compose.material3.OutlinedButton(onClick = { move = g to -1 }) { Text(tr("− Take out", "− خد منه")) }
                             }
-                            if (current < g.target) Text(tr("Save ", "حوّش ") + money(monthly, false) + tr(" / month", " في الشهر") +
+                            if (!pot && current < g.target) Text(tr("Save ", "حوّش ") + money(monthly, false) + tr(" / month", " في الشهر") +
                                 " (${PlanMath.monthsLeft(System.currentTimeMillis(), g.deadline)} " + tr("months", "شهر") + ")",
                                 style = MaterialTheme.typography.bodySmall)
                         }
@@ -157,7 +161,7 @@ fun PlanScreen(snap: Snapshot) {
                 }
             },
             confirmButton = { TextButton(onClick = {
-                scope.launch { repo.saveGoal(g.copy(saved = maxOf(0.0, g.saved + sign * v))) }
+                scope.launch { repo.moveGoal(g, sign * v) }
                 move = null
             }) { Text(tr("Save", "حفظ")) } },
             dismissButton = { TextButton(onClick = { move = null }) { Text(tr("Cancel", "إلغاء")) } },
@@ -218,8 +222,8 @@ fun GoalEditScreen(snap: Snapshot, id: Long) {
                 TextField1(tr("Icon", "أيقونة"), emoji, { emoji = it.take(2) }, Modifier.weight(1f))
                 TextField1(tr("Name", "الاسم"), name, { name = it }, Modifier.weight(4f))
             }
-            NumberField(tr("Target amount", "المبلغ المطلوب"), target, { target = it })
-            DateField(tr("By", "قبل"), deadline, { deadline = it })
+            NumberField(tr("Target amount (empty = open savings pot)", "المبلغ المطلوب (فاضي = تحويش مفتوح)"), target, { target = it })
+            if ((parseNum(target) ?: 0.0) > 0) DateField(tr("By", "قبل"), if (deadline > 0) deadline else System.currentTimeMillis() + 365L * 86_400_000, { deadline = it })
             val accounts = snap.accounts.map { it.account }.filter { !it.accountType.liability }
             Picker(tr("Money is in account", "الفلوس في حساب"), listOf<AccountEntity?>(null) + accounts, accounts.firstOrNull { it.id == account },
                 { it?.let { a -> "${a.accountType.emoji} ${a.name}" } ?: tr("— manual amount —", "— مبلغ يدوي —") }, { account = it?.id })
@@ -249,13 +253,20 @@ fun GoalEditScreen(snap: Snapshot, id: Long) {
                     fontWeight = FontWeight.SemiBold)
             }
             Button(modifier = Modifier.fillMaxWidth(), onClick = {
-                val tv = parseNum(target) ?: return@Button
+                val tv = parseNum(target) ?: 0.0
                 scope.launch {
-                    repo.saveGoal(g0.copy(name = name.ifBlank { "Goal" }, emoji = emoji.ifBlank { "🎯" }, target = tv, deadline = deadline,
+                    repo.saveGoal(g0.copy(name = name.ifBlank { "Goal" }, emoji = emoji.ifBlank { "🎯" }, target = tv,
+                        deadline = if (tv > 0 && deadline <= 0) System.currentTimeMillis() + 365L * 86_400_000 else deadline,
                         accountId = account, saved = parseNum(saved) ?: 0.0, wholeAccount = account != null && whole))
                     nav.popBackStack()
                 }
             }) { Text(tr("Save", "حفظ")) }
+            val history = snap.moves.filter { it.goalId == id }
+            if (history.isNotEmpty()) SectionCard(tr("History", "السجل")) {
+                history.take(50).forEach { m ->
+                    LabelValue(dateFmt(m.time, "dd MMM yyyy") + (m.note?.let { " · $it" } ?: ""), signedText(m.amount), amountColor(m.amount))
+                }
+            }
         }
     }
     if (confirm) ConfirmDialog(tr("Delete goal?", "تمسح الهدف؟"), g0.name, { scope.launch { repo.deleteGoal(g0); nav.popBackStack() } }, { confirm = false })

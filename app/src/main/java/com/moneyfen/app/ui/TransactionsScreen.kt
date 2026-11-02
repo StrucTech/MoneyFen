@@ -267,6 +267,21 @@ fun TxEditScreen(snap: Snapshot, id: Long, accountId: Long) {
                 }
                 if (split) ReviewDialog(existing) { split = false }
             }
+            if (existing != null && kindOf(existing).direction > 0) {
+                var saveOpen by remember { mutableStateOf(false) }
+                val savedFrom = snap.moves.filter { it.txId == existing.id }.sumOf { it.amount }
+                OutlinedButton(onClick = { saveOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (savedFrom > 0) tr("Saved from it: ", "اتحوش منه: ") + fmt(savedFrom) + tr(" (change)", " (تعديل)")
+                        else tr("💰 Save from this income", "💰 حوّش من الدخل ده"))
+                }
+                if (saveOpen) SaveDialog(existing, snap) { saveOpen = false }
+                val party = existing.party
+                if (!party.isNullOrBlank() && snap.rules.none { it.savePercent != null && com.moneyfen.core.RuleMatcher.matches(it.pattern, party) }) {
+                    TextButton(onClick = {
+                        scope.launch { repo.saveRule(RuleEntity(pattern = party, savePercent = 100.0, priority = (snap.rules.maxOfOrNull { it.priority } ?: 0) + 1)) }
+                    }) { Text(tr("Always ask me to save money from \"$party\"", "اسألني دايماً أحوش من فلوس \"$party\"")) }
+                }
+            }
             existing?.linkedTxId?.let { lid ->
                 TextButton(onClick = { nav.navigate("tx/$lid") }) { Text(tr("Linked transaction →", "المعاملة المرتبطة ←")) }
             }

@@ -54,6 +54,25 @@ class Prefs(context: Context) {
         get() = sp.getString("reviewDest", "CASH") ?: "CASH"
         set(v) { sp.edit { putString("reviewDest", v) }; bump() }
 
+    // Saving from income
+    var askSalary: Boolean
+        get() = sp.getBoolean("askSalary", true)
+        set(v) { sp.edit { putBoolean("askSalary", v) }; bump() }
+    /** PERCENT or FIXED */
+    var salaryMode: String
+        get() = sp.getString("salaryMode", "PERCENT") ?: "PERCENT"
+        set(v) { sp.edit { putString("salaryMode", v) }; bump() }
+    var salaryFixed: Double
+        get() = sp.getFloat("salaryFixed", 0f).toDouble()
+        set(v) { sp.edit { putFloat("salaryFixed", v.toFloat()) }; bump() }
+    var lastSaveGoal: Long
+        get() = sp.getLong("lastSaveGoal", 0)
+        set(v) { sp.edit { putLong("lastSaveGoal", v) }; bump() }
+    /** Account ids NOT counted in "safe to spend". */
+    var safeExclude: Set<Long>
+        get() = (sp.getString("safeExclude", "") ?: "").split(',').mapNotNull { it.toLongOrNull() }.toSet()
+        set(v) { sp.edit { putString("safeExclude", v.joinToString(",")) }; bump() }
+
     // Live prices
     var autoUsd: Boolean
         get() = sp.getBoolean("autoUsd", true)
@@ -104,6 +123,8 @@ class Prefs(context: Context) {
         "atmToCash" to atmToCash.toString(), "notifyOnSms" to notifyOnSms.toString(),
         "reviewCredit" to reviewCredit.toString(), "reviewDebit" to reviewDebit.toString(), "reviewDest" to reviewDest,
         "autoUsd" to autoUsd.toString(), "goldPremium" to goldPremium.toString(),
+        "askSalary" to askSalary.toString(), "salaryMode" to salaryMode, "salaryFixed" to salaryFixed.toString(),
+        "safeExclude" to safeExclude.joinToString(","),
     )
 
     fun importMap(m: Map<String, String>) {
@@ -117,5 +138,9 @@ class Prefs(context: Context) {
         m["reviewDest"]?.let { reviewDest = it }
         m["autoUsd"]?.toBooleanStrictOrNull()?.let { autoUsd = it }
         m["goldPremium"]?.toDoubleOrNull()?.let { goldPremium = it }
+        m["askSalary"]?.toBooleanStrictOrNull()?.let { askSalary = it }
+        m["salaryMode"]?.let { salaryMode = it }
+        m["salaryFixed"]?.toDoubleOrNull()?.let { salaryFixed = it }
+        m["safeExclude"]?.let { v -> safeExclude = v.split(',').mapNotNull { it.toLongOrNull() }.toSet() }
     }
 }

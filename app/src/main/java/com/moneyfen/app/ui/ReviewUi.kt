@@ -127,3 +127,74 @@ fun holdingSummary(av: AccountView): String? {
     val pct = pl / cost * 100
     return base + " · " + (if (pl >= 0) "▲ " else "▼ ") + money(kotlin.math.abs(pl), decimals = false) + " (${"%.1f".format(pct)}%)"
 }
+
+/** "How much of this income do you want to save, and where?" */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun SaveDialog(t: TxEntity, snap: com.moneyfen.app.data.Snapshot, onDismiss: () -> Unit) {
+    val repo = LocalRepo.current
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val total = snap.toEgp(t.amount, t.currency)
+    val already = snap.moves.filter { it.txId == t.id }
+    var amount by remember(t.id) { mutableStateOf(if (already.isNotEmpty()) fmtPlain(already.sumOf { it.amount }) else "") }
+    var suggested by remember(t.id) { mutableStateOf<Double?>(null) }
+    LaunchedEffect(t.id) {
+        val s = repo.suggestedSave(t)
+        suggested = s
+        if (amount.isEmpty()) amount = fmtPlain(Math.round(s * 100) / 100.0)
+    }
+    val pots = snap.goals
+    var goalId by remember(t.id) {
+        mutableStateOf(already.firstOrNull()?.goalId ?: repo.prefs.lastSaveGoal.takeIf { id -> pots.any { it.id == id } })
+    }
+    val pct = repo.prefs.savingsPercent
+    val fixed = repo.prefs.salaryFixed
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("💰 ${t.party ?: ""}  +${fmt(total)}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(tr("How much do you want to save from it?", "هتحوش كام منهم؟"))
+                NumberField(tr("Amount to save", "المبلغ اللي هيتحوش"), amount, { amount = it })
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AssistChip(onClick = { amount = fmtPlain(total) }, label = { Text(tr("All", "الكل")) })
+                    suggested?.let { sg -> AssistChip(onClick = { amount = fmtPlain(Math.round(sg * 100) / 100.0) }, label = { Text(tr("Suggested ", "المقترح ") + fmt0(sg)) }) }
+                    AssistChip(onClick = { amount = fmtPlain(Math.round(total * pct) / 100.0) }, label = { Text("$pct%") })
+                    if (fixed > 0) AssistChip(onClick = { amount = fmtPlain(minOf(fixed, total)) }, label = { Text(fmt0(fixed)) })
+                    AssistChip(onClick = { amount = "0" }, label = { Text(tr("Nothing", "ولا حاجة")) })
+                }
+                Picker(tr("Put it in", "حطه في"), listOf<com.moneyfen.app.data.GoalEntity?>(null) + pots, pots.firstOrNull { it.id == goalId },
+                    { g -> g?.let { "${it.emoji} ${it.name}" } ?: tr("🐷 Savings pot (auto)", "🐷 التحويش (تلقائي)") }, { goalId = it?.id })
+                Text(tr("It stays in the account but is reserved, so it's removed from \"safe to spend\".",
+                    "الفلوس بتفضل في الحساب بس بتتحجز، فبتتشال من \"الآمن تصرفه\"."), style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val v = (parseNum(amount) ?: 0.0).coerceIn(0.0, total)
+                scope.launch { repo.saveFromIncome(t.id, v, goalId); Notifier.cancel(ctx, t.id) }
+                onDismiss()
+            }) { Text(tr("Save", "حفظ")) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Later", "بعدين")) } },
+    )
+}
+
+/** Safe to spend = free money in accounts (after goals) − credit card debt. */
+@Composable
+fun SafeCard(snap: com.moneyfen.app.data.Snapshot) {
+    val s = snap.safeToSpend()
+    SectionCard(tr("✅ Safe to spend", "✅ الآمن تصرفه")) {
+        Text(money(s.safe, currency = "EGP"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = amountColor(s.safe))
+        LabelValue(tr("In accounts", "في الحسابات"), money(s.cash))
+        if (s.reserved > 0) LabelValue(tr("− Reserved for goals", "− محجوز للأهداف"), money(s.reserved))
+        if (s.cardDebt > 0) LabelValue(tr("− Credit card debt", "− مديونية الكريديت"), money(s.cardDebt))
+        if (s.safe < 0) Text(tr("You're spending money you don't have — pay the card from savings or cut spending.",
+            "انت بتصرف فلوس مش معاك — الكارت أكتر من المتاح بعد التحويش."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        val pending = snap.incomeToReview.size
+        if (pending > 0) Text(tr("$pending income(s) waiting: decide how much to save", "فيه $pending دخل مستني تقرر هتحوش منه كام"),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+    }
+}

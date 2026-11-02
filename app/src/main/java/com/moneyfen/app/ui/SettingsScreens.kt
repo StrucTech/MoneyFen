@@ -120,6 +120,21 @@ fun SettingsScreen(snap: Snapshot) {
                 SwitchRow(tr("ATM withdrawals go to Cash account", "السحب من ATM يروح لحساب الكاش"),
                     tr("Otherwise they count as spending (Cash withdrawal)", "غير كده بيتحسب مصروف (سحب كاش)"), prefs.atmToCash) { prefs.atmToCash = it }
             }
+            SectionCard(tr("Saving from income", "التحويش من الدخل")) {
+                SwitchRow(tr("Ask how much to save when salary arrives", "اسألني هحوش كام لما المرتب ينزل"), null, prefs.askSalary) { prefs.askSalary = it }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(prefs.salaryMode == "PERCENT", { prefs.salaryMode = "PERCENT" }, { Text(tr("Percent", "نسبة") + " ${prefs.savingsPercent}%") })
+                    FilterChip(prefs.salaryMode == "FIXED", { prefs.salaryMode = "FIXED" }, { Text(tr("Fixed amount", "مبلغ ثابت")) })
+                }
+                var fixedTxt by remember { mutableStateOf(if (prefs.salaryFixed > 0) fmtPlain(prefs.salaryFixed) else "") }
+                if (prefs.salaryMode == "FIXED") Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField(tr("Fixed amount to save", "المبلغ الثابت"), fixedTxt, { fixedTxt = it }, Modifier.weight(1f))
+                    Button(onClick = { parseNum(fixedTxt)?.let { prefs.salaryFixed = it } }) { Text(tr("Save", "حفظ")) }
+                }
+                Text(tr("The percent is set in Plan. For freelance / other income: open the transaction → \"Always ask me to save\", or add a rule with a save %.",
+                    "النسبة بتتظبط من الخطة. للفريلانس أو أي دخل تاني: افتح المعاملة ← \"اسألني دايماً أحوش\"، أو اعمل قاعدة فيها نسبة تحويش."),
+                    style = MaterialTheme.typography.bodySmall)
+            }
             SectionCard(tr("Card charges", "مصاريف الكارت")) {
                 SwitchRow(tr("Ask after each credit card charge", "اسألني بعد كل عملية على الكريديت"),
                     tr("How much was really spent; the rest isn't counted as spending but stays on the card debt",
@@ -250,7 +265,8 @@ fun RulesScreen(snap: Snapshot) {
             }
             items(snap.rules, key = { it.id }) { r ->
                 val c = r.categoryId?.let { snap.categoryById[it] }
-                ClickRow(r.pattern, "→ " + catName(c) + (r.renameTo?.let { " · \"$it\"" } ?: "") + if (r.exclude) tr(" · excluded", " · مستبعدة") else "",
+                ClickRow(r.pattern, (if (r.categoryId != null) "→ " + catName(c) else "") + (r.renameTo?.let { " · \"$it\"" } ?: "") +
+                    (if (r.exclude) tr(" · excluded", " · مستبعدة") else "") + (r.savePercent?.let { " · 💰 ${fmtPlain(it)}%" } ?: ""),
                     leading = c?.emoji ?: "⚙️") { editing = r }
                 HorizontalDivider()
             }
@@ -262,6 +278,7 @@ fun RulesScreen(snap: Snapshot) {
         var rename by remember(r) { mutableStateOf(r.renameTo ?: "") }
         var exclude by remember(r) { mutableStateOf(r.exclude) }
         var priority by remember(r) { mutableStateOf(r.priority.toString()) }
+        var savePct by remember(r) { mutableStateOf(r.savePercent?.let(::fmtPlain) ?: "") }
         val matches = if (pattern.isBlank()) 0 else snap.txs.count { com.moneyfen.core.RuleMatcher.matches(pattern, it.party) }
         AlertDialog(
             onDismissRequest = { editing = null },
@@ -273,13 +290,14 @@ fun RulesScreen(snap: Snapshot) {
                     Picker(tr("Category", "التصنيف"), snap.categories, snap.categories.firstOrNull { it.id == cat }, { catName(it) }, { cat = it.id })
                     TextField1(tr("Rename to (optional)", "غيّر الاسم لـ (اختياري)"), rename, { rename = it })
                     SwitchRow(tr("Exclude from stats", "استبعد من الإحصائيات"), null, exclude) { exclude = it }
+                    NumberField(tr("Income from here: ask to save % (empty = no)", "دخل من هنا: اسألني أحوش كام % (فاضي = لأ)"), savePct, { savePct = it })
                     NumberField(tr("Priority", "الأولوية"), priority, { priority = it })
                 }
             },
             confirmButton = { TextButton(onClick = {
                 if (pattern.isNotBlank()) scope.launch {
                     repo.saveRule(r.copy(pattern = pattern.trim(), categoryId = cat, renameTo = rename.ifBlank { null }, exclude = exclude,
-                        priority = priority.toIntOrNull() ?: r.priority))
+                        priority = priority.toIntOrNull() ?: r.priority, savePercent = parseNum(savePct)))
                 }
                 editing = null
             }) { Text(tr("Save", "حفظ")) } },

@@ -40,7 +40,7 @@ object Notifier {
     )
 
     private fun reviewIntent(ctx: Context, txId: Long, action: String) = PendingIntent.getBroadcast(
-        ctx, (txId * 10 + action.length).toInt(),
+        ctx, txId.toInt() * 31 + action.hashCode(),
         Intent(ctx, ReviewReceiver::class.java).setAction(action).putExtra(ReviewReceiver.EXTRA_TX, txId),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
@@ -66,7 +66,13 @@ object Notifier {
                 .setContentTitle(title)
                 .setContentText(listOf(catName, bal).filter { it.isNotBlank() }.joinToString(" | "))
                 .setContentIntent(open(ctx)).setAutoCancel(true)
-            if (t.needsReview) {
+            if (t.needsReview && kindOf(t).direction > 0) {
+                val sug = repo.suggestedSave(t)
+                b.setContentText((if (ar) "هتحوش كام منهم؟ المقترح " else "How much to save? Suggested ") + fmt(sug))
+                b.addAction(0, (if (ar) "حوّش " else "Save ") + fmt(sug), reviewIntent(ctx, t.id, ReviewReceiver.SAVE_DEFAULT))
+                b.addAction(0, if (ar) "حوّش الكل" else "Save all", reviewIntent(ctx, t.id, ReviewReceiver.SAVE_ALL))
+                b.addAction(0, if (ar) "اختار…" else "Choose…", open(ctx))
+            } else if (t.needsReview) {
                 b.setContentText((if (ar) "كام منهم صرف فعلاً؟ " else "How much was really spent? ") + listOf(catName, bal).filter { it.isNotBlank() }.joinToString(" | "))
                 b.addAction(0, if (ar) "كله صرفي" else "All mine", reviewIntent(ctx, t.id, ReviewReceiver.ALL))
                 b.addAction(0, if (ar) "مش صرفي (كاش)" else "Not mine (cash)", reviewIntent(ctx, t.id, ReviewReceiver.NONE_CASH))
