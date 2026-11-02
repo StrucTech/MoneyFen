@@ -94,6 +94,14 @@ fun money(v: Double, decimals: Boolean = true, currency: String? = null): String
 
 val LocalHide = androidx.compose.runtime.compositionLocalOf { false }
 
+/** "October 2026" for calendar months, otherwise "27 Oct – 26 Nov 2026". */
+fun periodLabel(from: Long, to: Long): String {
+    val c = java.util.Calendar.getInstance().apply { timeInMillis = from }
+    val calendar = c.get(java.util.Calendar.DAY_OF_MONTH) == 1 && c.get(java.util.Calendar.HOUR_OF_DAY) == 0 &&
+        java.util.Calendar.getInstance().apply { timeInMillis = to }.get(java.util.Calendar.DAY_OF_MONTH) == 1
+    return if (calendar) dateFmt(from, "MMMM yyyy") else dateFmt(from, "d MMM") + " – " + dateFmt(to - 1, "d MMM yyyy")
+}
+
 fun dateFmt(t: Long, pattern: String = "dd MMM yyyy"): String = SimpleDateFormat(pattern, Locale.getDefault()).format(Date(t))
 
 fun parseNum(s: String): Double? = s.replace(",", "").replace("٫", ".").trim()

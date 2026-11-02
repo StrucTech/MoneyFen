@@ -66,6 +66,7 @@ fun PlanScreen(snap: Snapshot) {
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), title = { Text(tr("Savings plan", "خطة الادخار")) })
+        Text(tr("Month: ", "الشهر: ") + periodLabel(from, to), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
         LazyColumn(Modifier.fillMaxSize()) {
             item {
                 SectionCard(tr("Save a fixed % of income", "ادخر نسبة ثابتة من الدخل")) {

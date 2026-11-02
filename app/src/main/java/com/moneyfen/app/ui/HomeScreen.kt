@@ -100,7 +100,7 @@ fun HomeScreen(snap: Snapshot) {
                 }
             }
             item {
-                SectionCard(tr("This month", "الشهر ده")) {
+                SectionCard(tr("This month", "الشهر ده") + " · " + periodLabel(from, to)) {
                     LabelValue(tr("Income", "الدخل"), money(month.income), amountColor(1.0))
                     LabelValue(tr("Spent", "المصروف"), money(month.expense), amountColor(-1.0))
                     LabelValue(tr("Saved", "اتحوش"), money(month.saved), amountColor(month.saved))

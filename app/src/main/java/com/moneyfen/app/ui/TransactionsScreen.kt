@@ -116,7 +116,7 @@ fun TransactionsScreen(snap: Snapshot, accountId: Long?) {
             FilterChip(allTime, { allTime = !allTime }, label = { Text(tr("All time", "كل الوقت")) })
             if (!allTime) {
                 IconButton(onClick = { monthOffset-- }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null) }
-                Text(dateFmt(from, "MMM yyyy"))
+                Text(periodLabel(from, to), style = MaterialTheme.typography.bodySmall)
                 IconButton(onClick = { if (monthOffset < 0) monthOffset++ }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }
             }
             Box(Modifier.weight(1f))

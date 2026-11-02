@@ -64,7 +64,7 @@ fun AnalyticsScreen(snap: Snapshot) {
         TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0), title = { Text(tr("Analytics", "التحليل")) })
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             IconButton(onClick = { offset-- }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null) }
-            Text(dateFmt(from, "MMMM yyyy"), style = MaterialTheme.typography.titleMedium)
+            Text(periodLabel(from, to), style = MaterialTheme.typography.titleMedium)
             IconButton(onClick = { if (offset < 0) offset++ }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }
         }
         LazyColumn(Modifier.fillMaxSize()) {

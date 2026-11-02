@@ -120,6 +120,26 @@ fun SettingsScreen(snap: Snapshot) {
                 SwitchRow(tr("ATM withdrawals go to Cash account", "السحب من ATM يروح لحساب الكاش"),
                     tr("Otherwise they count as spending (Cash withdrawal)", "غير كده بيتحسب مصروف (سحب كاش)"), prefs.atmToCash) { prefs.atmToCash = it }
             }
+            SectionCard(tr("Month starts on", "الشهر بيبدأ من")) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(prefs.cycleMode == "SALARY", { prefs.cycleMode = "SALARY" }, { Text(tr("Salary day", "يوم المرتب")) })
+                    FilterChip(prefs.cycleMode == "DAY", { prefs.cycleMode = "DAY" }, { Text(tr("Fixed day", "يوم ثابت")) })
+                    FilterChip(prefs.cycleMode == "CALENDAR", { prefs.cycleMode = "CALENDAR" }, { Text(tr("1st", "أول الشهر")) })
+                }
+                if (prefs.cycleMode == "DAY") {
+                    var dayTxt by remember { mutableStateOf(prefs.cycleDay.toString()) }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NumberField(tr("Day of month", "يوم في الشهر"), dayTxt, { dayTxt = it }, Modifier.weight(1f))
+                        Button(onClick = { dayTxt.toIntOrNull()?.let { prefs.cycleDay = it } }) { Text(tr("Save", "حفظ")) }
+                    }
+                }
+                if (prefs.cycleMode == "SALARY") Text(tr(
+                    "A new month starts the day salary arrives. Extra employer payments within 20 days don't start a new month. Until the next salary arrives the month stays open.",
+                    "الشهر الجديد بيبدأ يوم نزول المرتب. أي تحويل تاني من جهة العمل خلال ٢٠ يوم مش بيبدأ شهر جديد. لحد ما المرتب الجاي ينزل الشهر بيفضل مفتوح.",
+                ), style = MaterialTheme.typography.bodySmall)
+                val (f, t) = com.moneyfen.app.data.monthRange()
+                Text(tr("Current month: ", "الشهر الحالي: ") + periodLabel(f, t), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            }
             SectionCard(tr("Saving from income", "التحويش من الدخل")) {
                 SwitchRow(tr("Ask how much to save when salary arrives", "اسألني هحوش كام لما المرتب ينزل"), null, prefs.askSalary) { prefs.askSalary = it }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

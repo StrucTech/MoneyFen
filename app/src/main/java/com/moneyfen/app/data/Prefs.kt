@@ -77,6 +77,14 @@ class Prefs(context: Context) {
         get() = (sp.getString("safeExclude", "") ?: "").split(',').mapNotNull { it.toLongOrNull() }.toSet()
         set(v) { sp.edit { putString("safeExclude", v.joinToString(",")) }; bump() }
 
+    /** When a budget month starts: SALARY (day salary arrives), DAY (fixed day), CALENDAR (1st). */
+    var cycleMode: String
+        get() = sp.getString("cycleMode", "SALARY") ?: "SALARY"
+        set(v) { sp.edit { putString("cycleMode", v) }; bump() }
+    var cycleDay: Int
+        get() = sp.getInt("cycleDay", 25)
+        set(v) { sp.edit { putInt("cycleDay", v.coerceIn(1, 31)) }; bump() }
+
     // Live prices
     var autoUsd: Boolean
         get() = sp.getBoolean("autoUsd", true)
@@ -128,7 +136,7 @@ class Prefs(context: Context) {
         "reviewCredit" to reviewCredit.toString(), "reviewDebit" to reviewDebit.toString(), "reviewDest" to reviewDest,
         "autoUsd" to autoUsd.toString(), "goldPremium" to goldPremium.toString(),
         "askSalary" to askSalary.toString(), "salaryMode" to salaryMode, "salaryFixed" to salaryFixed.toString(),
-        "safeExclude" to safeExclude.joinToString(","),
+        "safeExclude" to safeExclude.joinToString(","), "cycleMode" to cycleMode, "cycleDay" to cycleDay.toString(),
     )
 
     fun importMap(m: Map<String, String>) {
@@ -145,6 +153,8 @@ class Prefs(context: Context) {
         m["askSalary"]?.toBooleanStrictOrNull()?.let { askSalary = it }
         m["salaryMode"]?.let { salaryMode = it }
         m["salaryFixed"]?.toDoubleOrNull()?.let { salaryFixed = it }
+        m["cycleMode"]?.let { cycleMode = it }
+        m["cycleDay"]?.toIntOrNull()?.let { cycleDay = it }
         m["safeExclude"]?.let { v -> safeExclude = v.split(',').mapNotNull { it.toLongOrNull() }.toSet() }
     }
 }

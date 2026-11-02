@@ -127,7 +127,18 @@ data class Totals(val income: Double, val expense: Double, val expenseByCategory
 
 fun kindOf(t: TxEntity): TxKind = runCatching { TxKind.valueOf(t.kind) }.getOrDefault(TxKind.MANUAL_OUT)
 
-fun monthRange(offset: Int = 0, ref: Long = System.currentTimeMillis()): Pair<Long, Long> {
+/** Current budget-month settings, refreshed with every snapshot. */
+object Cycle {
+    @Volatile var mode: String = "SALARY"
+    @Volatile var day: Int = 25
+    @Volatile var starts: List<Long> = emptyList()
+}
+
+/** Budget "month" [offset] months from the current one (salary day / fixed day / calendar). */
+fun monthRange(offset: Int = 0, ref: Long = System.currentTimeMillis()): Pair<Long, Long> =
+    com.moneyfen.core.Cycles.range(Cycle.mode, Cycle.day, Cycle.starts, offset, ref)
+
+fun calendarMonth(offset: Int = 0, ref: Long = System.currentTimeMillis()): Pair<Long, Long> {
     val c = Calendar.getInstance().apply {
         timeInMillis = ref
         set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
@@ -166,6 +177,11 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
             moves = rest[4] as List<GoalMoveEntity>, safeExclude = prefs.safeExclude,
             usdRate = prefs.usdRate, loaded = true,
         )
+        val salaryCat = cats.firstOrNull { it.key == "salary" }?.id
+        Cycle.mode = prefs.cycleMode
+        Cycle.day = prefs.cycleDay
+        Cycle.starts = com.moneyfen.core.Cycles.salaryStarts(
+            txs.filter { it.kind == TxKind.SALARY.name || (salaryCat != null && it.categoryId == salaryCat) }.map { it.time })
         val byAccount = txs.groupBy { it.accountId }
         base.copy(accounts = accounts.map { a ->
             val bal = balanceOf(a, byAccount[a.id].orEmpty(), prefs.usdRate)
