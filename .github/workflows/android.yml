@@ -31,14 +31,24 @@ jobs:
           fi
 
       - name: Unit tests (SMS parser)
-        run: ./gradlew :core:test --no-daemon
+        run: |
+          set -o pipefail
+          ./gradlew :core:test --no-daemon 2>&1 | tee core-test.log
 
       - name: Build APK
         env:
           MONEYFEN_KEYSTORE_PASSWORD: ${{ secrets.MONEYFEN_KEYSTORE_PASSWORD }}
           MONEYFEN_KEY_ALIAS: ${{ secrets.MONEYFEN_KEY_ALIAS }}
           MONEYFEN_KEY_PASSWORD: ${{ secrets.MONEYFEN_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleRelease --no-daemon 2>&1 | tee build.log
+
+      - name: Show build errors
+        if: failure()
+        run: |
+          echo "================ ERRORS ================"
+          grep -E "^e: |error:|What went wrong|\[ksp\]|FAILED|Exception:|> " build.log core-test.log 2>/dev/null | grep -v "^build.log:> Task" | head -80
 
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk MoneyFen-${{ github.run_number }}.apk
