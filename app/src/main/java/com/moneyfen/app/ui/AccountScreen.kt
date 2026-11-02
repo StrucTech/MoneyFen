@@ -19,6 +19,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -166,10 +169,10 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                 val nothingFound = tr("Nothing found", "ملقتش حاجة")
                 Text(tr("Price source", "مصدر السعر"), fontWeight = FontWeight.SemiBold)
                 val opts = listOf("YAHOO" to tr("Yahoo (stocks)", "Yahoo (أسهم)"), "WEB" to tr("Web page", "صفحة ويب"), "MANUAL" to tr("Manual", "يدوي"))
-                androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     opts.forEachIndexed { i, (k, label) ->
-                        androidx.compose.material3.SegmentedButton(source == k, { source = k; quote = null },
-                            androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(label, maxLines = 1) }
+                        SegmentedButton(source == k, { source = k; quote = null },
+                            SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(label, maxLines = 1) }
                     }
                 }
                 when (source) {
