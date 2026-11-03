@@ -91,7 +91,18 @@ object Prices {
      * If [anchor] contains a "(" it is used as a regex and group 1 is the price.
      */
     /** Plain download first; if the price isn't there, render the page with JavaScript. */
+    /** Price at a spot the user picked on the page (anchor = "css:<selector>"). */
+    suspend fun cssPrice(ctx: android.content.Context, url: String, selector: String, last: Double?): Double {
+        val text = WebPage.elementText(ctx, url, selector)
+        val p = com.moneyfen.core.PriceText.firstNumber(text)
+            ?: error("The picked spot is empty now (\"${text.take(40)}\") — pick the price again / اختار السعر تاني")
+        if (last != null && last > 0 && kotlin.math.abs(p - last) / last > 0.25)
+            error("Got $p, too far from the last price $last — pick again / الرقم بعيد عن آخر سعر")
+        return p
+    }
+
     suspend fun fromUrlSmart(ctx: android.content.Context, url: String, anchor: String?, last: Double?): Double {
+        if (anchor != null && anchor.startsWith("css:")) return cssPrice(ctx, url, anchor.removePrefix("css:"), last)
         fun pick(html: String) = if (anchor.isNullOrBlank()) com.moneyfen.core.NavFinder.find(html, last) else extractPrice(html, anchor)
         val plain = runCatching { withContext(Dispatchers.IO) { pick(download(url)) } }
         plain.getOrNull()?.let { return it }

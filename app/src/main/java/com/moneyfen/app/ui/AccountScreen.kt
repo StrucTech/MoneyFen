@@ -245,6 +245,17 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                                 }
                             }) { Text(tr("Test", "جرّب")) }
                         }
+                        Button(onClick = {
+                            scope.launch {
+                                val a = build().copy(autoPrice = true, priceUrl = priceUrl.trim(), priceAnchor = anchor.trim().ifBlank { null })
+                                val savedId = repo.saveAccount(a).let { if (id == 0L) it else id }
+                                if (id == 0L) nav.navigate("account/$savedId") { popUpTo("account/{id}") { inclusive = true } }
+                                nav.navigate("pickprice/$savedId")
+                            }
+                        }, enabled = priceUrl.startsWith("http"), modifier = Modifier.fillMaxWidth()) {
+                            Text(tr("👆 Open the page and tap the price", "👆 افتح الصفحة ودوس على السعر"))
+                        }
+                        if (anchor.startsWith("css:")) Text(tr("✔ Price spot picked on the page", "✔ مكان السعر متحدد في الصفحة"), color = Green)
                         Text(tr(
                             "Any page that shows the price. Leave the text empty to detect the NAV automatically, or write the words just before the price (e.g. \"سعر الوثيقة\"). Pages that load with JavaScript are supported.",
                             "أي صفحة فيها السعر. سيب النص فاضي عشان يلاقي السعر لوحده، أو اكتب الكلام اللي قبل السعر على طول (مثلاً \"سعر الوثيقة\"). الصفحات اللي بتحمّل بجافاسكريبت شغالة.",

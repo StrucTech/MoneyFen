@@ -2,6 +2,12 @@ package com.moneyfen.core
 
 /** Pulls a price out of a web page's HTML. */
 object PriceText {
+    /** First number in a piece of text ("NAV: ١٨٫٧٥ EGP" -> 18.75). */
+    fun firstNumber(text: String): Double? {
+        val t = text.map { ch -> if (ch in '٠'..'٩') '0' + (ch - '٠') else if (ch == '٫') '.' else ch }.joinToString("")
+        return Regex("\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?").find(t)?.value?.replace(",", "")?.toDoubleOrNull()
+    }
+
     fun extract(html: String, anchor: String?): Double {
         val text = html.replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"), " ")
             .replace(Regex("<[^>]+>"), " ").replace("&nbsp;", " ").replace(Regex("\\s+"), " ")

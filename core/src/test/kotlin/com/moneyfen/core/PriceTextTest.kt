@@ -12,5 +12,10 @@ class PriceTextTest {
     @Test fun anchorArabic() = assertEquals(23.45, PriceText.extract(html, "سعر الوثيقة"))
     @Test fun anchorEnglishWithThousands() = assertEquals(1234.5678, PriceText.extract(html, "nav"))
     @Test fun regex() = assertEquals(1234.5678, PriceText.extract(html, "NAV ([\\d,.]+)"))
+    @Test fun firstNumber() {
+        assertEquals(18.75717, PriceText.firstNumber("NAV  18.75717 EGP"))
+        assertEquals(1234.5, PriceText.firstNumber("السعر ١,٢٣٤٫٥ جنيه"))
+    }
+
     @Test fun missing() { assertFailsWith<IllegalStateException> { PriceText.extract(html, "غير موجود") } }
 }
