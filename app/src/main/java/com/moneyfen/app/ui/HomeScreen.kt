@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.moneyfen.app.app
 import com.moneyfen.app.data.AccountType
 import com.moneyfen.app.data.Snapshot
 import com.moneyfen.app.data.monthRange
@@ -81,6 +82,7 @@ fun HomeScreen(snap: Snapshot) {
                     Spacer(Modifier.height(6.dp))
                     LabelValue(tr("Assets", "الأصول"), money(snap.assets), amountColor(1.0))
                     LabelValue(tr("Debts", "الديون"), money(snap.liabilities), amountColor(-1.0))
+                    NetWorthToggles(snap)
                 }
             }
             val review = snap.toReview
@@ -241,6 +243,32 @@ fun OnboardingScreen(snap: Snapshot) {
         Spacer(Modifier.height(10.dp))
         Button(onClick = { repo.prefs.onboarded = true }, modifier = Modifier.fillMaxWidth()) {
             Text(if (done) tr("Start", "يلا نبدأ") else tr("Skip for now", "بعدين"))
+        }
+    }
+}
+
+/** Chips to add / remove whole asset types (gold, funds, stocks…) from net worth with one tap. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun NetWorthToggles(snap: Snapshot) {
+    val ctx = LocalContext.current
+    val repo = LocalRepo.current
+    val byType = snap.accounts.filter { !it.account.archived }.groupBy { it.account.accountType }
+    if (byType.size < 2) return
+    Spacer(Modifier.height(6.dp))
+    Text(tr("Counted in net worth (tap to add / remove):", "داخل في الثروة (دوس عشان تضيف / تشيل):"), style = MaterialTheme.typography.bodySmall)
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        AccountType.entries.forEach { type ->
+            val list = byType[type] ?: return@forEach
+            val included = list.all { it.account.includeInNetWorth }
+            val value = list.sumOf { it.balanceEgp }
+            androidx.compose.material3.FilterChip(
+                selected = included,
+                onClick = {
+                    ctx.app.appScope.launch { list.forEach { repo.saveAccount(it.account.copy(includeInNetWorth = !included)) } }
+                },
+                label = { Text("${type.emoji} " + tr(type.en, type.ar) + " " + money(abs(value), decimals = false)) },
+            )
         }
     }
 }

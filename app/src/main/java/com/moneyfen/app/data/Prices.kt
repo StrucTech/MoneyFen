@@ -31,6 +31,8 @@ data class SymbolHit(val symbol: String, val name: String, val exchange: String,
  *  - Fallbacks: api.gold-api.com (gold), open.er-api.com (USD/EGP)
  */
 object Prices {
+    /** priceUrl marker: price comes from the EGX fund page of [AccountEntity.symbol]. */
+    const val EGX = "egx"
     private const val TROY_OUNCE_GRAMS = 31.1034768
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -88,6 +90,30 @@ object Prices {
      * Reads a price from any web page: finds [anchor] text in the page (tags removed) and takes the first number after it.
      * If [anchor] contains a "(" it is used as a regex and group 1 is the price.
      */
+    /** Plain download first; if the price isn't there, render the page with JavaScript. */
+    suspend fun fromUrlSmart(ctx: android.content.Context, url: String, anchor: String?, last: Double?): Double {
+        fun pick(html: String) = if (anchor.isNullOrBlank()) com.moneyfen.core.NavFinder.find(html, last) else extractPrice(html, anchor)
+        val plain = runCatching { withContext(Dispatchers.IO) { pick(download(url)) } }
+        plain.getOrNull()?.let { return it }
+        return runCatching { pick(WebPage.rendered(ctx, url)) }.getOrElse { e ->
+            throw IllegalStateException(e.message ?: plain.exceptionOrNull()?.message ?: "failed")
+        }
+    }
+
+    /** EGX / thndr mutual fund by ticker (MTF, AZN...). */
+    suspend fun egxFund(ctx: android.content.Context, ticker: String, last: Double?): Double =
+        fromUrlSmart(ctx, "https://egxtrade.com/stocks/" + URLEncoder.encode(ticker.trim().uppercase(), "UTF-8"), null, last)
+
+    private fun download(url: String): String {
+        val c = URL(url.trim()).openConnection() as HttpURLConnection
+        c.connectTimeout = 15_000; c.readTimeout = 20_000
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36")
+        return try {
+            if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
+            c.inputStream.bufferedReader().use { it.readText() }
+        } finally { c.disconnect() }
+    }
+
     fun fromUrl(url: String, anchor: String?): Double {
         val c = URL(url.trim()).openConnection() as HttpURLConnection
         c.connectTimeout = 15_000; c.readTimeout = 20_000
@@ -138,8 +164,14 @@ object Prices {
                 }
                 AccountType.STOCK, AccountType.FUND -> {
                     val url = a.priceUrl?.takeIf { it.isNotBlank() }
+                    if (url == EGX && !a.symbol.isNullOrBlank()) {
+                        runCatching { egxFund(repo.ctx, a.symbol, a.unitPrice) }.onSuccess { p ->
+                            repo.db.accounts().upsert(a.copy(unitPrice = p, priceAt = now))
+                        }.onFailure { errors += "${a.symbol}: ${it.message}" }
+                        continue
+                    }
                     if (url != null) {
-                        runCatching { fromUrl(url, a.priceAnchor) }.onSuccess { p ->
+                        runCatching { fromUrlSmart(repo.ctx, url, a.priceAnchor, a.unitPrice) }.onSuccess { p ->
                             repo.db.accounts().upsert(a.copy(unitPrice = p, priceAt = now))
                         }.onFailure { errors += "${a.name}: ${it.message}" }
                         continue

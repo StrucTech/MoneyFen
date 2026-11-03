@@ -186,7 +186,7 @@ sealed class IngestResult {
 
 const val REIMBURSED = "reimbursed"
 
-class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
+class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
     private val mutex = Mutex()
     private val day = 86_400_000L
 

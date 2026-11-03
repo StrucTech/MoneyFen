@@ -80,8 +80,9 @@ fun AccountScreen(snap: Snapshot, id: Long) {
     val isStock = type == AccountType.STOCK || type == AccountType.FUND
     var source by remember(id) { mutableStateOf(when {
         id != 0L && !a0.autoPrice -> "MANUAL"
+        a0.priceUrl == com.moneyfen.app.data.Prices.EGX -> "EGX"
         !a0.priceUrl.isNullOrBlank() -> "WEB"
-        id == 0L && a0.symbol == null && type == AccountType.FUND -> "MANUAL"
+        id == 0L && type == AccountType.FUND -> "EGX"
         else -> "YAHOO"
     }) }
     var priceUrl by remember(id) { mutableStateOf(a0.priceUrl ?: "") }
@@ -102,8 +103,8 @@ fun AccountScreen(snap: Snapshot, id: Long) {
         karat = if (isGold) karat else a0.karat,
         costBasis = parseNum(cost),
         autoPrice = if (isStock) source != "MANUAL" else auto,
-        symbol = if (isStock && source == "YAHOO") symbol.trim().uppercase().ifBlank { null } else if (isStock) null else a0.symbol,
-        priceUrl = if (isStock && source == "WEB") priceUrl.trim().ifBlank { null } else null,
+        symbol = if (isStock && (source == "YAHOO" || source == "EGX")) symbol.trim().uppercase().ifBlank { null } else if (isStock) null else a0.symbol,
+        priceUrl = if (isStock && source == "WEB") priceUrl.trim().ifBlank { null } else if (isStock && source == "EGX") com.moneyfen.app.data.Prices.EGX else null,
         priceAnchor = if (isStock && source == "WEB") anchor.trim().ifBlank { null } else null,
     )
 
@@ -176,7 +177,7 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                 val io = kotlinx.coroutines.Dispatchers.IO
                 val nothingFound = tr("Nothing found", "ملقتش حاجة")
                 Text(tr("Price source", "مصدر السعر"), fontWeight = FontWeight.SemiBold)
-                val opts = listOf("YAHOO" to tr("Yahoo (stocks)", "Yahoo (أسهم)"), "WEB" to tr("Web page", "صفحة ويب"), "MANUAL" to tr("Manual", "يدوي"))
+                val opts = listOf("EGX" to tr("EGX fund", "صندوق مصري"), "YAHOO" to "Yahoo", "WEB" to tr("Web", "ويب"), "MANUAL" to tr("Manual", "يدوي"))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     opts.forEachIndexed { i, (k, label) ->
                         SegmentedButton(source == k, { source = k; quote = null },
@@ -184,6 +185,22 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                     }
                 }
                 when (source) {
+                    "EGX" -> {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextField1(tr("Ticker on thndr (MTF, AZN…)", "الرمز على ثندر (MTF، AZN…)"), symbol, { symbol = it }, Modifier.weight(1f))
+                            OutlinedButton(onClick = {
+                                quote = "…"
+                                scope.launch {
+                                    quote = runCatching { com.moneyfen.app.data.Prices.egxFund(ctx, symbol, parseNum(unit)) }
+                                        .fold({ p -> unit = fmtPlain(p); "✔ $p EGP" }, { "✘ ${it.message}" })
+                                }
+                            }) { Text(tr("Test", "جرّب")) }
+                        }
+                        Text(tr(
+                            "Reads today's certificate price (NAV) from egxtrade.com. Compare it once with thndr. If you already typed a price, the app only accepts values within 25% of it, so a wrong number is never saved.",
+                            "بيقرا سعر الوثيقة النهارده من egxtrade.com. قارنه مرة مع ثندر. لو كاتب سعر قبل كده، الأبلكيشن مش هيقبل غير رقم قريب منه (±25%) عشان ميحفظش رقم غلط.",
+                        ), style = MaterialTheme.typography.bodySmall)
+                    }
                     "YAHOO" -> {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextField1(tr("Search by name", "دوّر بالاسم"), searchQ, { searchQ = it }, Modifier.weight(1f))
@@ -219,18 +236,18 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                     "WEB" -> {
                         TextField1(tr("Page link that shows the price", "لينك الصفحة اللي فيها السعر"), priceUrl, { priceUrl = it })
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextField1(tr("Text right before the price", "النص اللي قبل السعر على طول"), anchor, { anchor = it }, Modifier.weight(1f))
+                            TextField1(tr("Text before the price (optional)", "النص اللي قبل السعر (اختياري)"), anchor, { anchor = it }, Modifier.weight(1f))
                             OutlinedButton(onClick = {
                                 quote = "…"
                                 scope.launch {
-                                    quote = runCatching { kotlinx.coroutines.withContext(io) { com.moneyfen.app.data.Prices.fromUrl(priceUrl, anchor) } }
+                                    quote = runCatching { com.moneyfen.app.data.Prices.fromUrlSmart(ctx, priceUrl, anchor, parseNum(unit)) }
                                         .fold({ p -> unit = fmtPlain(p); "✔ $p" }, { "✘ ${it.message}" })
                                 }
                             }) { Text(tr("Test", "جرّب")) }
                         }
                         Text(tr(
-                            "Example: the fund's page on the bank/fund manager site, and the text \"NAV\" or \"سعر الوثيقة\". The app takes the first number after that text. If the page loads the price with JavaScript it won't work: use Manual.",
-                            "مثال: صفحة الصندوق على موقع البنك أو الشركة، والنص \"سعر الوثيقة\" أو \"NAV\". الأبلكيشن بياخد أول رقم بعد النص ده. لو الصفحة بتحمّل السعر بجافاسكريبت مش هتشتغل: استخدم يدوي.",
+                            "Any page that shows the price. Leave the text empty to detect the NAV automatically, or write the words just before the price (e.g. \"سعر الوثيقة\"). Pages that load with JavaScript are supported.",
+                            "أي صفحة فيها السعر. سيب النص فاضي عشان يلاقي السعر لوحده، أو اكتب الكلام اللي قبل السعر على طول (مثلاً \"سعر الوثيقة\"). الصفحات اللي بتحمّل بجافاسكريبت شغالة.",
                         ), style = MaterialTheme.typography.bodySmall)
                     }
                     else -> Text(tr("Type the current unit price below and update it whenever you like.",
