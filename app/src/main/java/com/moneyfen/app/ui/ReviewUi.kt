@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
@@ -34,6 +35,7 @@ import com.moneyfen.app.data.AccountView
 import com.moneyfen.app.data.Prices
 import com.moneyfen.app.data.Repository
 import com.moneyfen.app.data.TxEntity
+import com.moneyfen.app.data.AccountEntity
 import kotlinx.coroutines.launch
 
 /** "How much of this charge was really my spending?" */
@@ -46,6 +48,10 @@ fun ReviewDialog(t: TxEntity, onDismiss: () -> Unit) {
     var dest by remember(t.id) { mutableStateOf(runCatching { Repository.Dest.valueOf(repo.prefs.reviewDest) }.getOrDefault(Repository.Dest.CASH)) }
     val mineV = (parseNum(mine) ?: 0.0).coerceIn(0.0, t.amount)
     val rest = t.amount - mineV
+    val snap = LocalSnap.current
+    val lents = snap.owedToMe.map { it.account }
+    var lentId by remember(t.id) { mutableStateOf(repo.prefs.lastLent.takeIf { id -> lents.any { it.id == id } } ?: lents.firstOrNull()?.id) }
+    var newLent by remember(t.id) { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -65,7 +71,7 @@ fun ReviewDialog(t: TxEntity, onDismiss: () -> Unit) {
                     Text(tr("Where did the rest go?", "الباقي راح فين؟"), fontWeight = FontWeight.SemiBold)
                     val opts = listOf(
                         Repository.Dest.CASH to tr("I got cash", "خدته كاش"),
-                        Repository.Dest.LENT to tr("Owed to me", "ليا عند حد"),
+                        Repository.Dest.LENT to tr("Will be repaid", "هيترد لي"),
                         Repository.Dest.NONE to tr("Nothing", "ولا حاجة"),
                     )
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -73,12 +79,16 @@ fun ReviewDialog(t: TxEntity, onDismiss: () -> Unit) {
                             SegmentedButton(dest == d, { dest = d }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(label, maxLines = 1) }
                         }
                     }
+                    if (dest == Repository.Dest.LENT) LentPicker(lents, lentId, { lentId = it }, newLent, { newLent = it })
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                scope.launch { repo.resolveReview(t.id, mineV, dest); Notifier.cancel(ctx, t.id) }
+                scope.launch {
+                    repo.resolveReview(t.id, mineV, dest, if (newLent.isBlank()) lentId else null, newLent.ifBlank { null })
+                    Notifier.cancel(ctx, t.id)
+                }
                 onDismiss()
             }) { Text(tr("Save", "حفظ")) }
         },
@@ -150,19 +160,51 @@ fun SaveDialog(t: TxEntity, snap: com.moneyfen.app.data.Snapshot, onDismiss: () 
     }
     val pct = repo.prefs.savingsPercent
     val fixed = repo.prefs.salaryFixed
+    val lents = snap.owedToMe
+    val word = t.party?.split(' ')?.firstOrNull { it.length >= 3 }
+    var lentId by remember(t.id) {
+        mutableStateOf(snap.txs.firstOrNull { it.linkedTxId == t.id && it.note == com.moneyfen.app.data.REIMBURSED }?.accountId
+            ?: lents.firstOrNull { word != null && it.account.name.contains(word, true) }?.account?.id
+            ?: lents.firstOrNull { it.balance > 0 }?.account?.id)
+    }
+    var repay by remember(t.id) { mutableStateOf(t.personalAmount?.let { fmtPlain(t.amount - it) } ?: "") }
+    var newLent by remember(t.id) { mutableStateOf("") }
+    var hasRepay by remember(t.id) { mutableStateOf(t.personalAmount != null) }
+    val repayV = if (hasRepay) (parseNum(repay) ?: 0.0).coerceIn(0.0, t.amount) else 0.0
+    val real = snap.toEgp(t.amount - repayV, t.currency)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("💰 ${t.party ?: ""}  +${fmt(total)}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("Part of it repays expenses I paid", "جزء منه سداد مصاريف دفعتها"))
+                        Text(tr("That part isn't income", "الجزء ده مش دخل"), style = MaterialTheme.typography.bodySmall)
+                    }
+                    androidx.compose.material3.Switch(hasRepay, { hasRepay = it })
+                }
+                if (hasRepay) {
+                    LentPicker(lents.map { it.account }, lentId, { lentId = it }, newLent, { newLent = it })
+                    val owed = lents.firstOrNull { it.account.id == lentId }?.balance ?: 0.0
+                    if (owed > 0) Text(tr("Owes you ", "عليه ليك ") + fmt(owed), style = MaterialTheme.typography.bodySmall)
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        NumberField(tr("Repayment part", "جزء السداد"), repay, { repay = it }, Modifier.weight(1f))
+                        if (owed > 0) AssistChip(onClick = { repay = fmtPlain(minOf(owed, t.amount)) }, label = { Text(tr("All owed", "كل اللي عليه")) })
+                    }
+                    Text(tr("Real income: ", "الدخل الحقيقي: ") + fmt(real), fontWeight = FontWeight.SemiBold)
+                }
                 Text(tr("How much do you want to save from it?", "هتحوش كام منهم؟"))
                 NumberField(tr("Amount to save", "المبلغ اللي هيتحوش"), amount, { amount = it })
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AssistChip(onClick = { amount = fmtPlain(total) }, label = { Text(tr("All", "الكل")) })
-                    suggested?.let { sg -> AssistChip(onClick = { amount = fmtPlain(Math.round(sg * 100) / 100.0) }, label = { Text(tr("Suggested ", "المقترح ") + fmt0(sg)) }) }
-                    AssistChip(onClick = { amount = fmtPlain(Math.round(total * pct) / 100.0) }, label = { Text("$pct%") })
-                    if (fixed > 0) AssistChip(onClick = { amount = fmtPlain(minOf(fixed, total)) }, label = { Text(fmt0(fixed)) })
+                    AssistChip(onClick = { amount = fmtPlain(real) }, label = { Text(tr("All", "الكل")) })
+                    suggested?.let { sg0 ->
+                        val sg = if (total > 0) sg0 * real / total else sg0
+                        AssistChip(onClick = { amount = fmtPlain(Math.round(sg * 100) / 100.0) }, label = { Text(tr("Suggested ", "المقترح ") + fmt0(sg)) })
+                    }
+                    AssistChip(onClick = { amount = fmtPlain(Math.round(real * pct) / 100.0) }, label = { Text("$pct%") })
+                    if (fixed > 0) AssistChip(onClick = { amount = fmtPlain(minOf(fixed, real)) }, label = { Text(fmt0(fixed)) })
                     AssistChip(onClick = { amount = "0" }, label = { Text(tr("Nothing", "ولا حاجة")) })
                 }
                 Picker(tr("Put it in", "حطه في"), listOf<com.moneyfen.app.data.GoalEntity?>(null) + pots, pots.firstOrNull { it.id == goalId },
@@ -174,7 +216,10 @@ fun SaveDialog(t: TxEntity, snap: com.moneyfen.app.data.Snapshot, onDismiss: () 
         confirmButton = {
             TextButton(onClick = {
                 val v = (parseNum(amount) ?: 0.0).coerceIn(0.0, total)
-                scope.launch { repo.saveFromIncome(t.id, v, goalId); Notifier.cancel(ctx, t.id) }
+                scope.launch {
+                    repo.resolveReview(t.id, t.amount - repayV, Repository.Dest.LENT, if (newLent.isBlank()) lentId else null, newLent.ifBlank { null })
+                    repo.saveFromIncome(t.id, v, goalId); Notifier.cancel(ctx, t.id)
+                }
                 onDismiss()
             }) { Text(tr("Save", "حفظ")) }
         },
@@ -193,8 +238,36 @@ fun SafeCard(snap: com.moneyfen.app.data.Snapshot) {
         if (s.cardDebt > 0) LabelValue(tr("− Credit card debt", "− مديونية الكريديت"), money(s.cardDebt))
         if (s.safe < 0) Text(tr("You're spending money you don't have — pay the card from savings or cut spending.",
             "انت بتصرف فلوس مش معاك — الكارت أكتر من المتاح بعد التحويش."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        DailyBlock(snap)
+        val owed = snap.owedToMe.sumOf { maxOf(0.0, it.balanceEgp) }
+        if (owed > 0) Text(tr("🤝 Owed to you (not counted until repaid): ", "🤝 ليك عند الناس (مش محسوب لحد ما يترد): ") + money(owed),
+            style = MaterialTheme.typography.bodySmall)
         val pending = snap.incomeToReview.size
         if (pending > 0) Text(tr("$pending income(s) waiting: decide how much to save", "فيه $pending دخل مستني تقرر هتحوش منه كام"),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
     }
+}
+
+/** Pick (or create) the receivable account: who owes me. */
+@Composable
+fun LentPicker(lents: List<AccountEntity>, selected: Long?, onSelect: (Long?) -> Unit, newName: String, onNewName: (String) -> Unit) {
+    if (lents.isNotEmpty()) Picker(tr("Who will pay you back", "مين هيرجعلك الفلوس"), listOf<AccountEntity?>(null) + lents,
+        if (newName.isNotBlank()) null else lents.firstOrNull { it.id == selected },
+        { it?.let { a -> "🤝 ${a.name}" } ?: tr("+ New person / client", "+ شخص / عميل جديد") }, { onSelect(it?.id); if (it != null) onNewName("") })
+    if (lents.isEmpty() || selected == null || newName.isNotBlank())
+        TextField1(tr("Name (e.g. client name)", "الاسم (مثلاً اسم العميل)"), newName, onNewName)
+}
+
+/** Allowed spending per day until the month ends. */
+@Composable
+fun DailyBlock(snap: com.moneyfen.app.data.Snapshot) {
+    val d = snap.daily()
+    androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
+    Text(tr("📅 Allowed per day", "📅 المسموح في اليوم"), fontWeight = FontWeight.SemiBold)
+    Text(money(maxOf(0.0, d.allowance)), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = amountColor(d.allowance))
+    LabelValue(tr("Spent today", "صرفت النهارده"), money(d.spentToday))
+    LabelValue(tr("Left for today", "باقي للنهارده"), money(d.leftToday), amountColor(d.leftToday))
+    if (d.allowance > 0) ProgressLine((d.spentToday / d.allowance).toFloat(), over = d.spentToday > d.allowance)
+    Text(tr("${d.daysLeft} days until ", "${d.daysLeft} يوم لحد ") + dateFmt(d.periodEnd, "d MMM") + tr(" (next month)", " (الشهر الجاي)"),
+        style = MaterialTheme.typography.bodySmall)
 }

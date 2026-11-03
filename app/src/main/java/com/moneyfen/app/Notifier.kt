@@ -56,6 +56,9 @@ object Notifier {
         val sign = if (kindOf(t).direction >= 0) "+" else "−"
         val title = "$sign${fmt(t.amount)} ${t.currency} · ${t.party ?: ""}"
         val catName = cat?.let { "${it.emoji} ${if (ar) it.nameAr else it.nameEn}" } ?: ""
+        val daily = if (kindOf(t).direction < 0) snap.daily().let { d ->
+            (if (ar) "باقي النهارده " else "Left today ") + fmt(maxOf(0.0, d.leftToday))
+        } else ""
         val bal = acc?.let {
             val label = if (it.account.accountType == AccountType.CREDIT_CARD) (if (ar) "المديونية" else "Debt") else (if (ar) "الرصيد" else "Balance")
             "$label: ${fmt(kotlin.math.abs(it.balance))}"
@@ -64,7 +67,7 @@ object Notifier {
             val b = NotificationCompat.Builder(ctx, CH_TX)
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle(title)
-                .setContentText(listOf(catName, bal).filter { it.isNotBlank() }.joinToString(" | "))
+                .setContentText(listOf(catName, bal, daily).filter { it.isNotBlank() }.joinToString(" | "))
                 .setContentIntent(open(ctx)).setAutoCancel(true)
             if (t.needsReview && kindOf(t).direction > 0) {
                 val sug = repo.suggestedSave(t)

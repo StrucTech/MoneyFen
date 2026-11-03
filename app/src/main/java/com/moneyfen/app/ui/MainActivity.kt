@@ -43,6 +43,7 @@ import com.moneyfen.app.data.Snapshot
 
 val LocalRepo = staticCompositionLocalOf<Repository> { error("no repo") }
 val LocalNav = staticCompositionLocalOf<NavHostController> { error("no nav") }
+val LocalSnap = androidx.compose.runtime.compositionLocalOf { Snapshot() }
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,7 +55,7 @@ class MainActivity : AppCompatActivity() {
                 val snap by repo.snapshot.collectAsStateWithLifecycle(Snapshot())
                 val prefsVersion by repo.prefs.version.collectAsStateWithLifecycle()
                 val nav = rememberNavController()
-                CompositionLocalProvider(LocalRepo provides repo, LocalNav provides nav, LocalHide provides (prefsVersion >= 0 && repo.prefs.hideAmounts)) {
+                CompositionLocalProvider(LocalRepo provides repo, LocalNav provides nav, LocalSnap provides snap, LocalHide provides (prefsVersion >= 0 && repo.prefs.hideAmounts)) {
                     Surface(Modifier.fillMaxSize()) {
                         if (!repo.prefs.onboarded) OnboardingScreen(snap) else AppScaffold(nav, snap)
                     }

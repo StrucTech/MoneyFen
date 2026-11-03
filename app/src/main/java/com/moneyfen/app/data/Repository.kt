@@ -91,6 +91,27 @@ data class Snapshot(
         return Safe(cash, reserved, debt)
     }
 
+    data class Daily(val allowance: Double, val spentToday: Double, val daysLeft: Int, val periodEnd: Long) {
+        val leftToday get() = allowance - spentToday
+    }
+
+    /** Daily allowance: what is safe to spend (as of this morning) spread over the days left until the month ends. */
+    fun daily(now: Long = System.currentTimeMillis()): Daily {
+        val (_, end) = monthRange(0, now)
+        val c = java.util.Calendar.getInstance().apply {
+            timeInMillis = now; set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val today = c.timeInMillis
+        val daysLeft = maxOf(1, kotlin.math.ceil((end - today) / 86_400_000.0).toInt())
+        val spent = maxOf(0.0, totals(today, today + 86_400_000L).expense)
+        val allowance = (safeToSpend().safe + spent) / daysLeft
+        return Daily(allowance, spent, daysLeft, end)
+    }
+
+    /** Receivables: what people / clients owe me. */
+    val owedToMe: List<AccountView> get() = accounts.filter { it.account.accountType == AccountType.LENT && !it.account.archived }
+
     /** Total put into goals in a period (minus taken out). */
     fun savedInto(from: Long, to: Long): Double = moves.filter { it.time in from until to }.sumOf { it.amount }
 
@@ -513,31 +534,47 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
     enum class Dest { CASH, LENT, NONE }
 
     /**
-     * Splits a charge: [personal] counts as my spending, the rest is not spending.
-     * The full amount still affects the card/account balance. The rest can be added to Cash
-     * (I got it back in cash) or to "money people owe me".
+     * Splits a transaction. [personal] is the part that is really mine (my spending / my income); the rest isn't counted in stats.
+     * The full amount still affects the card/account balance.
+     *  - Outflow: the rest goes to Cash (got it back in cash) or to a receivable account (someone / a client owes me).
+     *  - Inflow: the rest repays a receivable (reduces what someone owes me).
      */
-    suspend fun resolveReview(txId: Long, personal: Double, dest: Dest) { mutex.withLock { resolveLocked(txId, personal, dest) } }
+    suspend fun resolveReview(txId: Long, personal: Double, dest: Dest, lentAccountId: Long? = null, newLentName: String? = null) {
+        mutex.withLock { resolveLocked(txId, personal, dest, lentAccountId, newLentName) }
+    }
 
-    private suspend fun resolveLocked(txId: Long, personal: Double, dest: Dest) {
+    private suspend fun lentAccount(party: String?, id: Long?, newName: String?): AccountEntity {
+        val all = db.accounts().all()
+        id?.let { i -> all.firstOrNull { it.id == i }?.let { return it } }
+        if (!newName.isNullOrBlank()) {
+            val a = AccountEntity(name = newName.trim(), type = AccountType.LENT.name, sortOrder = 4)
+            return a.copy(id = db.accounts().upsert(a))
+        }
+        val lent = all.filter { it.accountType == AccountType.LENT && !it.archived }
+        val word = party?.split(' ')?.firstOrNull { it.length >= 3 }
+        return lent.firstOrNull { word != null && it.name.contains(word, true) }
+            ?: lent.firstOrNull()
+            ?: AccountEntity(name = "Owed to me", type = AccountType.LENT.name, sortOrder = 4).let { it.copy(id = db.accounts().upsert(it)) }
+    }
+
+    private suspend fun resolveLocked(txId: Long, personal: Double, dest: Dest, lentAccountId: Long?, newLentName: String?) {
         val t = db.txs().get(txId) ?: return
+        val incoming = kindOf(t).direction > 0
         val p = personal.coerceIn(0.0, t.amount)
         db.txs().byLinked(t.id).filter { it.note == REIMBURSED }.forEach { db.txs().delete(it) }
-        db.txs().upsert(t.copy(personalAmount = if (abs(p - t.amount) < 0.005) null else p, needsReview = false))
+        db.txs().upsert(t.copy(personalAmount = if (abs(p - t.amount) < 0.005) null else p, needsReview = if (incoming) t.needsReview else false))
         val rest = t.amount - p
         if (rest < 0.005 || dest == Dest.NONE) return
-        prefs.reviewDest = dest.name
+        if (!incoming) prefs.reviewDest = dest.name
         val cats = db.categories().all()
-        val type = if (dest == Dest.CASH) AccountType.CASH else AccountType.LENT
-        val acc = db.accounts().all().firstOrNull { it.accountType == type && !it.archived }
-            ?: AccountEntity(
-                name = if (dest == Dest.CASH) "Cash" else "Owed to me",
-                type = type.name, sortOrder = 3,
-            ).let { it.copy(id = db.accounts().upsert(it)) }
+        val acc = if (dest == Dest.LENT || incoming) lentAccount(t.party, lentAccountId, newLentName).also { prefs.lastLent = it.id }
+        else db.accounts().all().firstOrNull { it.accountType == AccountType.CASH && !it.archived }
+            ?: AccountEntity(name = "Cash", type = AccountType.CASH.name, sortOrder = 3).let { it.copy(id = db.accounts().upsert(it)) }
         val amountInAcc = if (t.currency == acc.currency) rest else if (t.currency == "USD") rest * prefs.usdRate else rest
         db.txs().upsert(TxEntity(
             accountId = acc.id, time = t.time, amount = amountInAcc, currency = acc.currency,
-            kind = TxKind.MANUAL_IN.name, categoryId = internalId(cats), party = t.party, note = REIMBURSED, linkedTxId = t.id,
+            kind = (if (incoming) TxKind.MANUAL_OUT else TxKind.MANUAL_IN).name,
+            categoryId = internalId(cats), party = t.party, note = REIMBURSED, linkedTxId = t.id,
         ))
     }
 

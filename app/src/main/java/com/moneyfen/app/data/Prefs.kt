@@ -69,6 +69,9 @@ class Prefs(context: Context) {
     var salaryFixed: Double
         get() = sp.getFloat("salaryFixed", 0f).toDouble()
         set(v) { sp.edit { putFloat("salaryFixed", v.toFloat()) }; bump() }
+    var lastLent: Long
+        get() = sp.getLong("lastLent", 0)
+        set(v) { sp.edit { putLong("lastLent", v) }; bump() }
     var lastSaveGoal: Long
         get() = sp.getLong("lastSaveGoal", 0)
         set(v) { sp.edit { putLong("lastSaveGoal", v) }; bump() }
