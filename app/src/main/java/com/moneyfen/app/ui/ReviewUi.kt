@@ -36,6 +36,7 @@ import com.moneyfen.app.data.Prices
 import com.moneyfen.app.data.Repository
 import com.moneyfen.app.data.TxEntity
 import com.moneyfen.app.data.AccountEntity
+import com.moneyfen.app.app
 import kotlinx.coroutines.launch
 
 /** "How much of this charge was really my spending?" */
@@ -45,12 +46,24 @@ fun ReviewDialog(t: TxEntity, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var mine by remember(t.id) { mutableStateOf(fmtPlain(t.personalAmount ?: t.amount)) }
-    var dest by remember(t.id) { mutableStateOf(runCatching { Repository.Dest.valueOf(repo.prefs.reviewDest) }.getOrDefault(Repository.Dest.CASH)) }
+    val snap = LocalSnap.current
+    val savedLink = snap.txs.firstOrNull { it.linkedTxId == t.id && it.note == com.moneyfen.app.data.REIMBURSED }
+    val savedAcc = savedLink?.let { snap.accountById[it.accountId]?.account }
+    var dest by remember(t.id) {
+        mutableStateOf(when {
+            savedAcc?.accountType == com.moneyfen.app.data.AccountType.LENT -> Repository.Dest.LENT
+            savedAcc?.accountType == com.moneyfen.app.data.AccountType.CASH -> Repository.Dest.CASH
+            t.personalAmount != null -> Repository.Dest.NONE
+            else -> runCatching { Repository.Dest.valueOf(repo.prefs.reviewDest) }.getOrDefault(Repository.Dest.CASH)
+        })
+    }
     val mineV = (parseNum(mine) ?: 0.0).coerceIn(0.0, t.amount)
     val rest = t.amount - mineV
-    val snap = LocalSnap.current
     val lents = snap.owedToMe.map { it.account }
-    var lentId by remember(t.id) { mutableStateOf(repo.prefs.lastLent.takeIf { id -> lents.any { it.id == id } } ?: lents.firstOrNull()?.id) }
+    var lentId by remember(t.id) {
+        mutableStateOf(savedAcc?.takeIf { it.accountType == com.moneyfen.app.data.AccountType.LENT }?.id
+            ?: repo.prefs.lastLent.takeIf { id -> lents.any { it.id == id } } ?: lents.firstOrNull()?.id)
+    }
     var newLent by remember(t.id) { mutableStateOf("") }
 
     AlertDialog(
@@ -85,7 +98,7 @@ fun ReviewDialog(t: TxEntity, onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = {
-                scope.launch {
+                ctx.app.appScope.launch {
                     repo.resolveReview(t.id, mineV, dest, if (newLent.isBlank()) lentId else null, newLent.ifBlank { null })
                     Notifier.cancel(ctx, t.id)
                 }
@@ -216,7 +229,7 @@ fun SaveDialog(t: TxEntity, snap: com.moneyfen.app.data.Snapshot, onDismiss: () 
         confirmButton = {
             TextButton(onClick = {
                 val v = (parseNum(amount) ?: 0.0).coerceIn(0.0, total)
-                scope.launch {
+                ctx.app.appScope.launch {
                     repo.resolveReview(t.id, t.amount - repayV, Repository.Dest.LENT, if (newLent.isBlank()) lentId else null, newLent.ifBlank { null })
                     repo.saveFromIncome(t.id, v, goalId); Notifier.cancel(ctx, t.id)
                 }

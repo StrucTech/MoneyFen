@@ -29,11 +29,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.moneyfen.app.app
 import com.moneyfen.app.data.CategoryType
 import com.moneyfen.app.data.Repository
 import com.moneyfen.app.data.Snapshot
@@ -46,9 +46,9 @@ import kotlinx.coroutines.launch
 fun IncomeSourcesScreen(snap: Snapshot) {
     val repo = LocalRepo.current
     val nav = LocalNav.current
-    val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Repository.Source?>(null) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val sources = remember(snap) { repo.incomeSources(snap) }
     val incomeCats = snap.categories.filter { it.categoryType == CategoryType.INCOME && it.key != "salary" }
     fun isIncome(s: Repository.Source) = s.rule?.categoryId?.let { snap.categoryById[it]?.categoryType == CategoryType.INCOME } == true
@@ -98,7 +98,7 @@ fun IncomeSourcesScreen(snap: Snapshot) {
                 }
             },
             confirmButton = { TextButton(onClick = {
-                scope.launch { repo.setSource(s.party, if (income) cat else null, parseNum(save)) }
+                ctx.app.appScope.launch { repo.setSource(s.party, if (income) cat else null, parseNum(save)) }
                 editing = null
             }) { Text(tr("Save", "حفظ")) } },
             dismissButton = { TextButton(onClick = { editing = null }) { Text(tr("Cancel", "إلغاء")) } },
@@ -113,13 +113,13 @@ private fun Header(t: String) = Text(t, style = MaterialTheme.typography.labelLa
 @Composable
 private fun SourceRow(s: Repository.Source, income: Boolean, snap: Snapshot, onClick: () -> Unit) {
     val repo = LocalRepo.current
-    val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val cat = s.rule?.categoryId?.let { snap.categoryById[it] }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
         Checkbox(income, { on ->
             val freelance = snap.categories.firstOrNull { it.key == "freelance" }?.id
                 ?: snap.categories.firstOrNull { it.categoryType == CategoryType.INCOME }?.id
-            scope.launch { repo.setSource(s.party, if (on) freelance else null, s.rule?.savePercent) }
+            ctx.app.appScope.launch { repo.setSource(s.party, if (on) freelance else null, s.rule?.savePercent) }
         })
         Column(Modifier.weight(1f)) {
             ClickRow(s.party,
