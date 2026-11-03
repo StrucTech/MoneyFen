@@ -247,14 +247,24 @@ fun SafeCard(snap: com.moneyfen.app.data.Snapshot) {
     SectionCard(tr("✅ Safe to spend", "✅ الآمن تصرفه")) {
         Text(money(s.safe, currency = "EGP"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = amountColor(s.safe))
         LabelValue(tr("In accounts", "في الحسابات"), money(s.cash))
+        if (s.owed > 0) LabelValue(tr("+ Owed to you", "+ ليك عند الناس"), money(s.owed))
         if (s.reserved > 0) LabelValue(tr("− Reserved for goals", "− محجوز للأهداف"), money(s.reserved))
         if (s.cardDebt > 0) LabelValue(tr("− Credit card debt", "− مديونية الكريديت"), money(s.cardDebt))
         if (s.safe < 0) Text(tr("You're spending money you don't have — pay the card from savings or cut spending.",
             "انت بتصرف فلوس مش معاك — الكارت أكتر من المتاح بعد التحويش."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         DailyBlock(snap)
         val owed = snap.owedToMe.sumOf { maxOf(0.0, it.balanceEgp) }
-        if (owed > 0) Text(tr("🤝 Owed to you (not counted until repaid): ", "🤝 ليك عند الناس (مش محسوب لحد ما يترد): ") + money(owed),
-            style = MaterialTheme.typography.bodySmall)
+        if (owed > 0 || snap.includeLent) {
+            val prefs = LocalRepo.current.prefs
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(tr("🤝 Count money owed to me", "🤝 احسب الفلوس اللي ليا عند الناس"), style = MaterialTheme.typography.bodyMedium)
+                    Text(tr("Owed: ", "ليك: ") + money(owed) + if (snap.includeLent) "" else tr(" · not counted", " · مش محسوبة"),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                androidx.compose.material3.Switch(snap.includeLent, { prefs.includeLent = it })
+            }
+        }
         val pending = snap.incomeToReview.size
         if (pending > 0) Text(tr("$pending income(s) waiting: decide how much to save", "فيه $pending دخل مستني تقرر هتحوش منه كام"),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)

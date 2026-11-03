@@ -75,6 +75,9 @@ class Prefs(context: Context) {
     var lastSaveGoal: Long
         get() = sp.getLong("lastSaveGoal", 0)
         set(v) { sp.edit { putLong("lastSaveGoal", v) }; bump() }
+    var includeLent: Boolean
+        get() = sp.getBoolean("includeLent", false)
+        set(v) { sp.edit { putBoolean("includeLent", v) }; bump() }
     /** Account ids NOT counted in "safe to spend". */
     var safeExclude: Set<Long>
         get() = (sp.getString("safeExclude", "") ?: "").split(',').mapNotNull { it.toLongOrNull() }.toSet()
@@ -139,7 +142,7 @@ class Prefs(context: Context) {
         "reviewCredit" to reviewCredit.toString(), "reviewDebit" to reviewDebit.toString(), "reviewDest" to reviewDest,
         "autoUsd" to autoUsd.toString(), "goldPremium" to goldPremium.toString(),
         "askSalary" to askSalary.toString(), "salaryMode" to salaryMode, "salaryFixed" to salaryFixed.toString(),
-        "safeExclude" to safeExclude.joinToString(","), "cycleMode" to cycleMode, "cycleDay" to cycleDay.toString(),
+        "safeExclude" to safeExclude.joinToString(","), "cycleMode" to cycleMode, "includeLent" to includeLent.toString(), "cycleDay" to cycleDay.toString(),
     )
 
     fun importMap(m: Map<String, String>) {
@@ -157,6 +160,7 @@ class Prefs(context: Context) {
         m["salaryMode"]?.let { salaryMode = it }
         m["salaryFixed"]?.toDoubleOrNull()?.let { salaryFixed = it }
         m["cycleMode"]?.let { cycleMode = it }
+        m["includeLent"]?.toBooleanStrictOrNull()?.let { includeLent = it }
         m["cycleDay"]?.toIntOrNull()?.let { cycleDay = it }
         m["safeExclude"]?.let { v -> safeExclude = v.split(',').mapNotNull { it.toLongOrNull() }.toSet() }
     }

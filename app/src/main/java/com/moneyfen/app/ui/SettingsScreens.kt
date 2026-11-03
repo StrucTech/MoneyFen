@@ -140,6 +140,10 @@ fun SettingsScreen(snap: Snapshot) {
                 val (f, t) = com.moneyfen.app.data.monthRange()
                 Text(tr("Current month: ", "الشهر الحالي: ") + periodLabel(f, t), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
             }
+            SectionCard(tr("Safe to spend", "الآمن تصرفه")) {
+                SwitchRow(tr("Count money I lent / owed to me", "احسب الفلوس اللي ليا عند الناس"),
+                    tr("Off = only counted after it's repaid", "مقفول = مش بتتحسب غير لما تترد"), prefs.includeLent) { prefs.includeLent = it }
+            }
             SectionCard(tr("Saving from income", "التحويش من الدخل")) {
                 SwitchRow(tr("Ask how much to save when salary arrives", "اسألني هحوش كام لما المرتب ينزل"), null, prefs.askSalary) { prefs.askSalary = it }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

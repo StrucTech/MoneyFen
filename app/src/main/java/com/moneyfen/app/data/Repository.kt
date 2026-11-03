@@ -40,6 +40,8 @@ data class Snapshot(
     val statements: List<StatementEntity> = emptyList(),
     val moves: List<GoalMoveEntity> = emptyList(),
     val safeExclude: Set<Long> = emptySet(),
+    /** Count "money I lent" (receivables) in safe to spend. */
+    val includeLent: Boolean = false,
     val usdRate: Double = 50.0,
     val loaded: Boolean = false,
 ) {
@@ -71,14 +73,18 @@ data class Snapshot(
         !it.account.archived && it.account.accountType in setOf(AccountType.BANK, AccountType.CASH, AccountType.WALLET, AccountType.CREDIT_CARD)
     }
 
-    data class Safe(val cash: Double, val reserved: Double, val cardDebt: Double) {
-        val free get() = cash - reserved
+    data class Safe(val cash: Double, val reserved: Double, val cardDebt: Double, val owed: Double = 0.0) {
+        val free get() = cash + owed - reserved
         val safe get() = free - cardDebt
     }
 
     /** Money I can spend without ending up in debt: free balances (after goals) minus credit card debt. */
     fun safeToSpend(): Safe {
-        var cash = 0.0; var reserved = 0.0; var debt = 0.0
+        var cash = 0.0; var reserved = 0.0; var debt = 0.0; var owed = 0.0
+        if (includeLent) for (av in owedToMe) {
+            if (av.account.id in safeExclude || !av.account.includeInNetWorth) continue
+            owed += maxOf(0.0, av.balanceEgp)
+        }
         for (av in safeCandidates()) {
             if (av.account.id in safeExclude) continue
             if (av.account.accountType == AccountType.CREDIT_CARD) debt += maxOf(0.0, -av.balanceEgp)
@@ -88,7 +94,7 @@ data class Snapshot(
                 reserved += if (av.account.currency == "USD") r * usdRate else r
             }
         }
-        return Safe(cash, reserved, debt)
+        return Safe(cash, reserved, debt, owed)
     }
 
     data class Daily(val allowance: Double, val spentToday: Double, val daysLeft: Int, val periodEnd: Long) {
@@ -195,7 +201,7 @@ class Repository(private val ctx: Context, val db: AppDb, val prefs: Prefs) {
             txs = txs, categories = cats,
             rules = rest[0] as List<RuleEntity>, goals = rest[1] as List<GoalEntity>,
             patterns = rest[2] as List<SmsPatternEntity>, statements = rest[3] as List<StatementEntity>,
-            moves = rest[4] as List<GoalMoveEntity>, safeExclude = prefs.safeExclude,
+            moves = rest[4] as List<GoalMoveEntity>, safeExclude = prefs.safeExclude, includeLent = prefs.includeLent,
             usdRate = prefs.usdRate, loaded = true,
         )
         val salaryCat = cats.firstOrNull { it.key == "salary" }?.id
