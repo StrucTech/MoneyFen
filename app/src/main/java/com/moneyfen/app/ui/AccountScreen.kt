@@ -197,8 +197,8 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                             }) { Text(tr("Test", "جرّب")) }
                         }
                         Text(tr(
-                            "Reads today's certificate price (NAV) from egxtrade.com. Compare it once with thndr. If you already typed a price, the app only accepts values within 25% of it, so a wrong number is never saved.",
-                            "بيقرا سعر الوثيقة النهارده من egxtrade.com. قارنه مرة مع ثندر. لو كاتب سعر قبل كده، الأبلكيشن مش هيقبل غير رقم قريب منه (±25%) عشان ميحفظش رقم غلط.",
+                            "Reads today's certificate price (NAV) from egxtrade.com, then Mubasher (MTF, AZN built in; or type a Mubasher fund number). Compare it once with thndr. If you already typed a price, the app only accepts values within 25% of it, so a wrong number is never saved.",
+                            "بيقرا سعر الوثيقة النهارده من egxtrade.com وبعدين مباشر (MTF و AZN جاهزين، أو اكتب رقم الصندوق على مباشر). قارنه مرة مع ثندر. لو كاتب سعر قبل كده، الأبلكيشن مش هيقبل غير رقم قريب منه (±25%) عشان ميحفظش رقم غلط.",
                         ), style = MaterialTheme.typography.bodySmall)
                     }
                     "YAHOO" -> {

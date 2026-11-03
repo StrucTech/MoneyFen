@@ -101,8 +101,24 @@ object Prices {
     }
 
     /** EGX / thndr mutual fund by ticker (MTF, AZN...). */
-    suspend fun egxFund(ctx: android.content.Context, ticker: String, last: Double?): Double =
-        fromUrlSmart(ctx, "https://egxtrade.com/stocks/" + URLEncoder.encode(ticker.trim().uppercase(), "UTF-8"), null, last)
+    /** Mubasher fund ids for known thndr tickers (fallback source). A number typed as ticker is used as a Mubasher id. */
+    private val mubasherIds = mapOf("MTF" to "5823", "AZN" to "5958")
+
+    suspend fun egxFund(ctx: android.content.Context, ticker: String, last: Double?): Double {
+        val t = ticker.trim().uppercase()
+        val urls = buildList {
+            if (t.all { it.isDigit() }) add("https://english.mubasher.info/countries/eg/funds/$t/")
+            else {
+                add("https://egxtrade.com/stocks/" + URLEncoder.encode(t, "UTF-8"))
+                mubasherIds[t]?.let { add("https://english.mubasher.info/countries/eg/funds/$it/") }
+            }
+        }
+        var err: Throwable? = null
+        for (u in urls) {
+            runCatching { fromUrlSmart(ctx, u, null, last) }.onSuccess { return it }.onFailure { err = it }
+        }
+        throw IllegalStateException(err?.message ?: "not found")
+    }
 
     private fun download(url: String): String {
         val c = URL(url.trim()).openConnection() as HttpURLConnection
