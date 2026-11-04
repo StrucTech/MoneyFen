@@ -17,5 +17,10 @@ class PriceTextTest {
         assertEquals(1234.5, PriceText.firstNumber("السعر ١,٢٣٤٫٥ جنيه"))
     }
 
+    @Test fun splitDigits() {
+        assertEquals(18.16, PriceText.firstNumber("NAV\n1\n8\n.\n1\n6\nEGP"))
+        assertEquals(18.16, NavFinder.find("<div>NAV</div><div><span>1</span><span>8</span><span>.</span><span>1</span><span>6</span></div><div>EGP</div>", null))
+    }
+
     @Test fun missing() { assertFailsWith<IllegalStateException> { PriceText.extract(html, "غير موجود") } }
 }

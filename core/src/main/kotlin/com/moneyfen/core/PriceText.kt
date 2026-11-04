@@ -2,16 +2,25 @@ package com.moneyfen.core
 
 /** Pulls a price out of a web page's HTML. */
 object PriceText {
+    /**
+     * Arabic digits -> Latin, and joins digits that a site splits into separate pieces
+     * ("NAV\n1\n8\n.\n1\n6" -> "NAV 18.16").
+     */
+    fun normalizeDigits(text: String): String {
+        val t = text.map { ch -> if (ch in '٠'..'٩') '0' + (ch - '٠') else if (ch == '٫') '.' else ch }.joinToString("")
+        return t.replace(Regex("(?<=[\\d.,])\\s+(?=[\\d.,])"), "")
+    }
+
     /** First number in a piece of text ("NAV: ١٨٫٧٥ EGP" -> 18.75). */
     fun firstNumber(text: String): Double? {
-        val t = text.map { ch -> if (ch in '٠'..'٩') '0' + (ch - '٠') else if (ch == '٫') '.' else ch }.joinToString("")
+        val t = normalizeDigits(text)
         return Regex("\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?").find(t)?.value?.replace(",", "")?.toDoubleOrNull()
     }
 
     fun extract(html: String, anchor: String?): Double {
         val text = html.replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"), " ")
             .replace(Regex("<[^>]+>"), " ").replace("&nbsp;", " ").replace(Regex("\\s+"), " ")
-            .map { ch -> if (ch in '٠'..'٩') '0' + (ch - '٠') else if (ch == '٫') '.' else ch }.joinToString("")
+            .let { PriceText.normalizeDigits(it) }
         val num = Regex("\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?")
         val a = anchor?.trim().orEmpty()
         val value: String = when {
@@ -48,7 +57,7 @@ object NavFinder {
         }
         val text = html.replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"), " ")
             .replace(Regex("<[^>]+>"), " ").replace("&nbsp;", " ").replace(Regex("\\s+"), " ")
-            .map { ch -> if (ch in '٠'..'٩') '0' + (ch - '٠') else if (ch == '٫') '.' else ch }.joinToString("")
+            .let { PriceText.normalizeDigits(it) }
         for (l in labels) {
             var i = text.indexOf(l, ignoreCase = true)
             while (i >= 0) {
