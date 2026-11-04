@@ -51,17 +51,18 @@ private const val PICK_JS = """
     return 'body > '+parts.join(' > ');
   }
   document.addEventListener('click', function(e){
+    if (!window.__mfPickMode) return;
     e.preventDefault(); e.stopPropagation();
     var el=e.target;
     document.querySelectorAll('[data-mfpick]').forEach(function(x){ x.style.outline=''; x.removeAttribute('data-mfpick'); });
     el.style.outline='3px solid #e53935'; el.setAttribute('data-mfpick','1');
-    MoneyFen.pick(path(el), (el.innerText||el.textContent||'').trim().substring(0,80));
+    MoneyFen.pick(path(el), (el.innerText||el.textContent||'').trim().substring(0,80), location.href);
   }, true);
 })();
 """
 
-private class Bridge(val onPick: (String, String) -> Unit) {
-    @JavascriptInterface fun pick(selector: String, text: String) = onPick(selector, text)
+private class Bridge(val onPick: (String, String, String) -> Unit) {
+    @JavascriptInterface fun pick(selector: String, text: String, href: String) = onPick(selector, text, href)
 }
 
 /** Opens the price page inside the app; the user taps the price and it's remembered for live updates. */
@@ -75,29 +76,47 @@ fun PricePickerScreen(snap: Snapshot, accountId: Long) {
     val url = av?.account?.priceUrl?.takeIf { it.startsWith("http") }
     var selector by remember { mutableStateOf<String?>(null) }
     var picked by remember { mutableStateOf("") }
+    var pageUrl by remember { mutableStateOf(url ?: "") }
+    var pickMode by remember { mutableStateOf(false) }
+    var webView by remember { mutableStateOf<WebView?>(null) }
     val value = PriceText.firstNumber(picked)
     val ctx = androidx.compose.ui.platform.LocalContext.current
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(windowInsets = WindowInsets(0, 0, 0, 0),
             title = { Text(tr("Tap the price", "دوس على السعر")) },
-            navigationIcon = { IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } })
+            navigationIcon = { IconButton(onClick = { val w = webView; if (w != null && w.canGoBack()) w.goBack() else nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } })
         if (url == null) { Text(tr("Add the page link first and save.", "حط لينك الصفحة واحفظ الأول."), Modifier.padding(16.dp)); return }
-        Text(tr("Wait for the page to load, then tap the fund's price. It gets a red frame.", "استنى الصفحة تحمّل، وبعدين دوس على سعر الصندوق. هيتعلّم بإطار أحمر."),
-            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
+        androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            androidx.compose.material3.SegmentedButton(!pickMode, {
+                pickMode = false; webView?.evaluateJavascript("window.__mfPickMode=false", null)
+            }, androidx.compose.material3.SegmentedButtonDefaults.itemShape(0, 2)) { Text(tr("🔐 Browse / log in", "🔐 تصفح / سجّل دخول")) }
+            androidx.compose.material3.SegmentedButton(pickMode, {
+                pickMode = true; webView?.evaluateJavascript(PICK_JS + ";window.__mfPickMode=true", null)
+            }, androidx.compose.material3.SegmentedButtonDefaults.itemShape(1, 2)) { Text(tr("👆 Pick the price", "👆 اختار السعر")) }
+        }
+        Text(if (pickMode) tr("Tap the fund's price. It gets a red frame.", "دوس على سعر الصندوق. هيتعلّم بإطار أحمر.")
+            else tr("If the site asks you to log in, log in here once (it's remembered), open the fund page, then switch to \"Pick the price\".",
+                "لو الموقع طلب تسجيل دخول، سجّل هنا مرة واحدة (هيتفتكر)، افتح صفحة الصندوق، وبعدين اختار \"اختار السعر\"."),
+            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         AndroidView(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             factory = { c ->
                 WebView(c).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    addJavascriptInterface(Bridge { s, t -> post { selector = s; picked = t } }, "MoneyFen")
+                    android.webkit.CookieManager.getInstance().setAcceptCookie(true)
+                    android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                    addJavascriptInterface(Bridge { s, t, h -> post { selector = s; picked = t; pageUrl = h } }, "MoneyFen")
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, u: String) {
-                            view.evaluateJavascript(PICK_JS, null)
-                            view.postDelayed({ view.evaluateJavascript(PICK_JS, null) }, 3000)
+                            android.webkit.CookieManager.getInstance().flush()
+                            val js = PICK_JS + ";window.__mfPickMode=" + pickMode
+                            view.evaluateJavascript(js, null)
+                            view.postDelayed({ view.evaluateJavascript(js, null) }, 3000)
                         }
                     }
+                    webView = this
                     loadUrl(url)
                 }
             },
@@ -111,8 +130,10 @@ fun PricePickerScreen(snap: Snapshot, accountId: Long) {
                 }
                 Button(enabled = value != null && selector != null && av != null, onClick = {
                     val a = av!!.account
+                    android.webkit.CookieManager.getInstance().flush()
                     ctx.app.appScope.launch {
-                        repo.saveAccount(a.copy(priceAnchor = "css:" + selector, unitPrice = value, autoPrice = true, priceAt = System.currentTimeMillis()))
+                        repo.saveAccount(a.copy(priceUrl = pageUrl.ifBlank { a.priceUrl }, priceAnchor = "css:" + selector, unitPrice = value,
+                            autoPrice = true, priceAt = System.currentTimeMillis()))
                     }
                     nav.popBackStack()
                 }) { Text(tr("Use this", "استخدم ده")) }
