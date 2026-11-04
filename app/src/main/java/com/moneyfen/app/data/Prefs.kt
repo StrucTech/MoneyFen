@@ -91,6 +91,24 @@ class Prefs(context: Context) {
         get() = sp.getInt("cycleDay", 25)
         set(v) { sp.edit { putInt("cycleDay", v.coerceIn(1, 31)) }; bump() }
 
+    // InstaPay fees
+    var ipnFee: Boolean
+        get() = sp.getBoolean("ipnFee", true)
+        set(v) { sp.edit { putBoolean("ipnFee", v) }; bump() }
+    var ipnFeePct: Double
+        get() = sp.getFloat("ipnFeePct", 0.1f).toDouble()
+        set(v) { sp.edit { putFloat("ipnFeePct", v.toFloat()) }; bump() }
+    var ipnFeeMin: Double
+        get() = sp.getFloat("ipnFeeMin", 0.5f).toDouble()
+        set(v) { sp.edit { putFloat("ipnFeeMin", v.toFloat()) }; bump() }
+    var ipnFeeMax: Double
+        get() = sp.getFloat("ipnFeeMax", 20f).toDouble()
+        set(v) { sp.edit { putFloat("ipnFeeMax", v.toFloat()) }; bump() }
+    /** Fees are added to past transfers from this date (InstaPay started charging around Aug 2025). */
+    var ipnFeeSince: Long
+        get() = sp.getLong("ipnFeeSince", 1754006400000L) // 2025-08-01
+        set(v) { sp.edit { putLong("ipnFeeSince", v) }; bump() }
+
     // Live prices
     var autoUsd: Boolean
         get() = sp.getBoolean("autoUsd", true)
@@ -142,7 +160,9 @@ class Prefs(context: Context) {
         "reviewCredit" to reviewCredit.toString(), "reviewDebit" to reviewDebit.toString(), "reviewDest" to reviewDest,
         "autoUsd" to autoUsd.toString(), "goldPremium" to goldPremium.toString(),
         "askSalary" to askSalary.toString(), "salaryMode" to salaryMode, "salaryFixed" to salaryFixed.toString(),
-        "safeExclude" to safeExclude.joinToString(","), "cycleMode" to cycleMode, "includeLent" to includeLent.toString(), "cycleDay" to cycleDay.toString(),
+        "safeExclude" to safeExclude.joinToString(","), "cycleMode" to cycleMode, "includeLent" to includeLent.toString(),
+        "ipnFee" to ipnFee.toString(), "ipnFeePct" to ipnFeePct.toString(), "ipnFeeMin" to ipnFeeMin.toString(),
+        "ipnFeeMax" to ipnFeeMax.toString(), "ipnFeeSince" to ipnFeeSince.toString(), "cycleDay" to cycleDay.toString(),
     )
 
     fun importMap(m: Map<String, String>) {
@@ -161,6 +181,11 @@ class Prefs(context: Context) {
         m["salaryFixed"]?.toDoubleOrNull()?.let { salaryFixed = it }
         m["cycleMode"]?.let { cycleMode = it }
         m["includeLent"]?.toBooleanStrictOrNull()?.let { includeLent = it }
+        m["ipnFee"]?.toBooleanStrictOrNull()?.let { ipnFee = it }
+        m["ipnFeePct"]?.toDoubleOrNull()?.let { ipnFeePct = it }
+        m["ipnFeeMin"]?.toDoubleOrNull()?.let { ipnFeeMin = it }
+        m["ipnFeeMax"]?.toDoubleOrNull()?.let { ipnFeeMax = it }
+        m["ipnFeeSince"]?.toLongOrNull()?.let { ipnFeeSince = it }
         m["cycleDay"]?.toIntOrNull()?.let { cycleDay = it }
         m["safeExclude"]?.let { v -> safeExclude = v.split(',').mapNotNull { it.toLongOrNull() }.toSet() }
     }

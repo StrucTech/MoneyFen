@@ -18,6 +18,7 @@ object Seed {
         CategoryEntity(key = "sport", nameEn = "Sport & care", nameAr = "رياضة وعناية", emoji = "🏋️", type = E, sortOrder = 9),
         CategoryEntity(key = "cash", nameEn = "Cash withdrawal", nameAr = "سحب كاش", emoji = "🏧", type = E, sortOrder = 10),
         CategoryEntity(key = "sent", nameEn = "Sent to people", nameAr = "تحويلات لناس", emoji = "📤", type = E, sortOrder = 11),
+        CategoryEntity(key = "fees", nameEn = "Bank fees", nameAr = "رسوم بنكية", emoji = "💸", type = E, sortOrder = 11),
         CategoryEntity(key = "other", nameEn = "Other", nameAr = "أخرى", emoji = "❓", type = E, sortOrder = 12),
         CategoryEntity(key = "salary", nameEn = "Salary", nameAr = "مرتب", emoji = "💼", type = I, sortOrder = 20),
         CategoryEntity(key = "freelance", nameEn = "Freelance", nameAr = "فريلانس", emoji = "💻", type = I, sortOrder = 21),

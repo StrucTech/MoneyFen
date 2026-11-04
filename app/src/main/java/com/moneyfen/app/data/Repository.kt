@@ -185,6 +185,7 @@ sealed class IngestResult {
 }
 
 const val REIMBURSED = "reimbursed"
+const val FEE = "fee"
 
 class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
     private val mutex = Mutex()
@@ -239,7 +240,7 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
 
     suspend fun ensureSeeded() {
         if (db.categories().all().isNotEmpty()) { upgradeSeed(); return }
-        prefs.seedVersion = 2
+        prefs.seedVersion = 3
         db.categories().insertAll(Seed.categories)
         val cats = db.categories().all().associateBy { it.key }
         val n = Seed.rules.size
@@ -248,7 +249,15 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
 
     /** v2: only chosen sources are income. Received transfers & deposits aren't income, refunds reduce spending. */
     private suspend fun upgradeSeed() {
-        if (prefs.seedVersion >= 2) return
+        if (prefs.seedVersion < 2) upgradeSeedV2()
+        if (prefs.seedVersion < 3) {
+            if (db.categories().all().none { it.key == "fees" }) db.categories().upsert(Seed.categories.first { it.key == "fees" })
+            prefs.seedVersion = 3
+            mutex.withLock { addFeesLocked(prefs.ipnFeeSince) }
+        }
+    }
+
+    private suspend fun upgradeSeedV2() {
         val cats = db.categories().all()
         fun upd(key: String, f: (CategoryEntity) -> CategoryEntity) = cats.firstOrNull { it.key == key }?.let(f)
         listOfNotNull(
@@ -451,6 +460,7 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
         )
         t = categorize(t, rules, cats)
         t = t.copy(id = db.txs().upsert(t))
+        if (prefs.ipnFee && p.kind == TxKind.TRANSFER_OUT && time >= prefs.ipnFeeSince && com.moneyfen.core.InstaPayFee.isInstaPayTransfer(body)) addFee(t, cats)
         t = matchRefund(t)
         t = matchCardPayment(t, cats)
         t = atmToCash(t, cats)
@@ -516,6 +526,45 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
             ?: AccountEntity(name = "Cash", type = AccountType.CASH.name, sortOrder = 3).let { it.copy(id = db.accounts().upsert(it)) }
         val inId = db.txs().upsert(TxEntity(accountId = cash.id, time = t.time, amount = t.amount, currency = t.currency, kind = TxKind.MANUAL_IN.name, categoryId = internal, party = t.party, note = "ATM", linkedTxId = t.id))
         return t.copy(categoryId = internal, linkedTxId = inId).also { db.txs().upsert(it) }
+    }
+
+    // ---------------------------------------------------------------- InstaPay fees
+
+    private suspend fun addFee(t: TxEntity, cats: List<CategoryEntity>) {
+        val fee = com.moneyfen.core.InstaPayFee.calc(t.amount, prefs.ipnFeePct, prefs.ipnFeeMin, prefs.ipnFeeMax)
+        if (fee <= 0) return
+        db.txs().upsert(TxEntity(
+            accountId = t.accountId, time = t.time + 1, amount = fee, currency = t.currency, kind = TxKind.MANUAL_OUT.name,
+            categoryId = cats.firstOrNull { it.key == "fees" }?.id, party = "InstaPay fee", note = FEE, linkedTxId = t.id,
+        ))
+    }
+
+    /** Adds the fee to every InstaPay transfer since [since] that doesn't have one yet. Returns how many were added. */
+    private suspend fun addFeesLocked(since: Long): Int {
+        if (!prefs.ipnFee) return 0
+        val cats = db.categories().all()
+        val all = db.txs().all()
+        val hasFee = all.filter { it.note == FEE }.mapNotNull { it.linkedTxId }.toSet()
+        var n = 0
+        db.withTransaction {
+            all.filter { it.time >= since && it.kind == TxKind.TRANSFER_OUT.name && it.id !in hasFee &&
+                com.moneyfen.core.InstaPayFee.isInstaPayTransfer(it.smsBody) }
+                .forEach { addFee(it, cats); n++ }
+        }
+        return n
+    }
+
+    /** Recalculate all automatic fees since [since] with the current settings. */
+    suspend fun recalcFees(since: Long): Int = mutex.withLock {
+        db.withTransaction { db.txs().all().filter { it.note == FEE && it.time >= since }.forEach { db.txs().delete(it) } }
+        addFeesLocked(since)
+    }
+
+    /** Remove every automatic fee. */
+    suspend fun removeFees(): Int = mutex.withLock {
+        val fees = db.txs().all().filter { it.note == FEE }
+        db.withTransaction { fees.forEach { db.txs().delete(it) } }
+        fees.size
     }
 
     // ---------------------------------------------------------------- Editing

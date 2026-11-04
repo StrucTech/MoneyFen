@@ -159,6 +159,33 @@ fun SettingsScreen(snap: Snapshot) {
                     "النسبة بتتظبط من الخطة. للفريلانس أو أي دخل تاني: افتح المعاملة ← \"اسألني دايماً أحوش\"، أو اعمل قاعدة فيها نسبة تحويش."),
                     style = MaterialTheme.typography.bodySmall)
             }
+            SectionCard(tr("InstaPay fees", "رسوم انستاباي")) {
+                SwitchRow(tr("Add the fee to every InstaPay transfer", "ضيف الرسوم لكل تحويل انستاباي"),
+                    tr("As a separate \"InstaPay fee\" transaction in Bank fees", "كمعاملة منفصلة \"InstaPay fee\" في الرسوم البنكية"), prefs.ipnFee) { prefs.ipnFee = it }
+                var pct by remember { mutableStateOf(fmtPlain(prefs.ipnFeePct)) }
+                var mn by remember { mutableStateOf(fmtPlain(prefs.ipnFeeMin)) }
+                var mx by remember { mutableStateOf(fmtPlain(prefs.ipnFeeMax)) }
+                var since by remember { mutableStateOf(prefs.ipnFeeSince) }
+                var feeMsg by remember { mutableStateOf<String?>(null) }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    NumberField("%", pct, { pct = it }, Modifier.weight(1f))
+                    NumberField(tr("Min", "أقل"), mn, { mn = it }, Modifier.weight(1f))
+                    NumberField(tr("Max", "أقصى"), mx, { mx = it }, Modifier.weight(1f))
+                }
+                DateField(tr("Past transfers since", "التحويلات القديمة من"), since, { since = it })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        parseNum(pct)?.let { prefs.ipnFeePct = it }; parseNum(mn)?.let { prefs.ipnFeeMin = it }
+                        parseNum(mx)?.let { prefs.ipnFeeMax = it }; prefs.ipnFeeSince = since
+                        scope.launch { feeMsg = "✔ " + repo.recalcFees(since) }
+                    }) { Text(tr("Save & recalculate", "احفظ واحسب تاني")) }
+                    OutlinedButton(onClick = { scope.launch { feeMsg = "✔ −" + repo.removeFees() } }) { Text(tr("Remove all", "امسحهم كلهم")) }
+                }
+                feeMsg?.let { Text(it) }
+                Text(tr("Checked against your balances: 0.1% of the amount, min 0.5, max 20 EGP. Incoming transfers have no fee.",
+                    "متراجعة على أرصدتك: ٠.١٪ من المبلغ، أقل حاجة ٠.٥ وأقصى ٢٠ جنيه. التحويلات الواردة مفيهاش رسوم."),
+                    style = MaterialTheme.typography.bodySmall)
+            }
             SectionCard(tr("Card charges", "مصاريف الكارت")) {
                 SwitchRow(tr("Ask after each credit card charge", "اسألني بعد كل عملية على الكريديت"),
                     tr("How much was really spent; the rest isn't counted as spending but stays on the card debt",
