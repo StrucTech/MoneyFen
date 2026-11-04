@@ -18,6 +18,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -87,13 +90,13 @@ fun PricePickerScreen(snap: Snapshot, accountId: Long) {
             title = { Text(tr("Tap the price", "دوس على السعر")) },
             navigationIcon = { IconButton(onClick = { val w = webView; if (w != null && w.canGoBack()) w.goBack() else nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } })
         if (url == null) { Text(tr("Add the page link first and save.", "حط لينك الصفحة واحفظ الأول."), Modifier.padding(16.dp)); return }
-        androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-            androidx.compose.material3.SegmentedButton(!pickMode, {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            SegmentedButton(!pickMode, {
                 pickMode = false; webView?.evaluateJavascript("window.__mfPickMode=false", null)
-            }, androidx.compose.material3.SegmentedButtonDefaults.itemShape(0, 2)) { Text(tr("🔐 Browse / log in", "🔐 تصفح / سجّل دخول")) }
-            androidx.compose.material3.SegmentedButton(pickMode, {
+            }, SegmentedButtonDefaults.itemShape(0, 2)) { Text(tr("🔐 Browse / log in", "🔐 تصفح / سجّل دخول")) }
+            SegmentedButton(pickMode, {
                 pickMode = true; webView?.evaluateJavascript(PICK_JS + ";window.__mfPickMode=true", null)
-            }, androidx.compose.material3.SegmentedButtonDefaults.itemShape(1, 2)) { Text(tr("👆 Pick the price", "👆 اختار السعر")) }
+            }, SegmentedButtonDefaults.itemShape(1, 2)) { Text(tr("👆 Pick the price", "👆 اختار السعر")) }
         }
         Text(if (pickMode) tr("Tap the fund's price. It gets a red frame.", "دوس على سعر الصندوق. هيتعلّم بإطار أحمر.")
             else tr("If the site asks you to log in, log in here once (it's remembered), open the fund page, then switch to \"Pick the price\".",
