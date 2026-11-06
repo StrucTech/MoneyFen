@@ -217,8 +217,15 @@ fun TxEditScreen(snap: Snapshot, id: Long, accountId: Long) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (existing == null || existing.smsHash == null) {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    SegmentedButton(kind.direction < 0, { kind = TxKind.MANUAL_OUT }, SegmentedButtonDefaults.itemShape(0, 2)) { Text(tr("Out", "خارج")) }
-                    SegmentedButton(kind.direction > 0, { kind = TxKind.MANUAL_IN }, SegmentedButtonDefaults.itemShape(1, 2)) { Text(tr("In", "داخل")) }
+                    SegmentedButton(kind.direction < 0, {
+                        kind = TxKind.MANUAL_OUT
+                        if (cat?.let { snap.categoryById[it] }?.categoryType != CategoryType.EXPENSE) cat = snap.categories.firstOrNull { it.key == "other" }?.id
+                    }, SegmentedButtonDefaults.itemShape(0, 2)) { Text(tr("Out", "خارج")) }
+                    SegmentedButton(kind.direction > 0, {
+                        kind = TxKind.MANUAL_IN
+                        if (cat?.let { snap.categoryById[it] }?.categoryType == CategoryType.EXPENSE)
+                            cat = (snap.categories.firstOrNull { it.key == "freelance" } ?: snap.categories.firstOrNull { it.key == "other_income" })?.id
+                    }, SegmentedButtonDefaults.itemShape(1, 2)) { Text(tr("In", "داخل")) }
                 }
             } else {
                 Picker(tr("Type", "النوع"), TxKind.entries.filter { it != TxKind.ADJUSTMENT }, kind, { kindLabel(it) + if (it.direction > 0) " (+)" else " (−)" }, { kind = it })
@@ -243,13 +250,15 @@ fun TxEditScreen(snap: Snapshot, id: Long, accountId: Long) {
             Button(modifier = Modifier.fillMaxWidth(), onClick = {
                 val amt = parseNum(amount) ?: return@Button
                 scope.launch {
-                    repo.saveTx(t0.copy(
+                    val newId = repo.saveTx(t0.copy(
                         amount = abs(amt), kind = kind.name, accountId = acc, categoryId = cat,
                         party = party.ifBlank { null }, note = note.ifBlank { null }, time = time, currency = currency,
                         excluded = excluded,
                         categoryLocked = t0.categoryLocked || cat != t0.categoryId || excluded != t0.excluded || id == 0L,
                     ))
-                    nav.popBackStack()
+                    // New money in: open it so repayment / saving can be set right away
+                    if (id == 0L && kind.direction > 0 && newId > 0) nav.navigate("tx/$newId") { popUpTo("tx/{id}?account={account}") { inclusive = true } }
+                    else nav.popBackStack()
                 }
             }) { Text(tr("Save", "حفظ")) }
             if (existing != null && !existing.party.isNullOrBlank()) {
