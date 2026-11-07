@@ -97,8 +97,10 @@ data class Snapshot(
         return Safe(cash, reserved, debt, owed)
     }
 
-    data class Daily(val allowance: Double, val spentToday: Double, val daysLeft: Int, val periodEnd: Long) {
+    data class Daily(val allowance: Double, val spentToday: Double, val daysLeft: Int, val periodEnd: Long, val safeNow: Double = 0.0) {
         val leftToday get() = allowance - spentToday
+        /** What's left now spread over the days after today (today's spending already taken out). */
+        val fromTomorrow get() = if (daysLeft > 1) safeNow / (daysLeft - 1) else safeNow
     }
 
     /** Daily allowance: what is safe to spend (as of this morning) spread over the days left until the month ends. */
@@ -111,8 +113,9 @@ data class Snapshot(
         val today = c.timeInMillis
         val daysLeft = maxOf(1, kotlin.math.ceil((end - today) / 86_400_000.0).toInt())
         val spent = maxOf(0.0, totals(today, today + 86_400_000L).expense)
-        val allowance = (safeToSpend().safe + spent) / daysLeft
-        return Daily(allowance, spent, daysLeft, end)
+        val safeNow = safeToSpend().safe
+        val allowance = (safeNow + spent) / daysLeft
+        return Daily(allowance, spent, daysLeft, end, safeNow)
     }
 
     /** Receivables: what people / clients owe me. */

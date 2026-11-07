@@ -291,6 +291,9 @@ fun DailyBlock(snap: com.moneyfen.app.data.Snapshot) {
     LabelValue(tr("Spent today", "صرفت النهارده"), money(d.spentToday))
     LabelValue(tr("Left for today", "باقي للنهارده"), money(d.leftToday), amountColor(d.leftToday))
     if (d.allowance > 0) ProgressLine((d.spentToday / d.allowance).toFloat(), over = d.spentToday > d.allowance)
+    if (d.daysLeft > 1) LabelValue(tr("From tomorrow, per day", "من بكره، في اليوم"), money(maxOf(0.0, d.fromTomorrow)), amountColor(d.fromTomorrow - d.allowance + 0.001))
+    Text(tr("Today's limit is fixed from the morning; today's spending changes the days after.",
+        "حد النهارده ثابت من الصبح؛ صرف النهارده بيأثر على الأيام اللي بعده."), style = MaterialTheme.typography.bodySmall)
     Text(tr("${d.daysLeft} days until ", "${d.daysLeft} يوم لحد ") + dateFmt(d.periodEnd, "d MMM") + tr(" (next month)", " (الشهر الجاي)"),
         style = MaterialTheme.typography.bodySmall)
 }
