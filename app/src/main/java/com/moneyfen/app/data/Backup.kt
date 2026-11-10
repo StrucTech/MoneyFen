@@ -80,7 +80,9 @@ class SupabaseBackup(private val prefs: Prefs) {
         conn.requestMethod = method
         conn.connectTimeout = 20_000; conn.readTimeout = 60_000
         conn.setRequestProperty("apikey", prefs.sbKey)
-        conn.setRequestProperty("Authorization", "Bearer ${token ?: prefs.sbKey}")
+        // New publishable keys (sb_publishable_...) are not JWTs: only send Authorization with a user token
+        if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
+        else if (prefs.sbKey.startsWith("eyJ")) conn.setRequestProperty("Authorization", "Bearer ${prefs.sbKey}")
         conn.setRequestProperty("Content-Type", "application/json")
         extra.forEach { (k, v) -> conn.setRequestProperty(k, v) }
         if (body != null) { conn.doOutput = true; conn.outputStream.use { it.write(body.toByteArray()) } }
