@@ -117,6 +117,7 @@ private fun AppScaffold(nav: NavHostController, snap: Snapshot) {
             }
             composable("categories") { CategoriesScreen(snap) }
             composable("rules") { RulesScreen(snap) }
+            composable("decide") { DecideScreen(snap) }
             composable("patterns") { PatternsScreen(snap) }
             composable("backup") { BackupScreen() }
             composable("sources") { IncomeSourcesScreen(snap) }

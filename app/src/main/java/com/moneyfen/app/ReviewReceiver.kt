@@ -14,6 +14,7 @@ class ReviewReceiver : BroadcastReceiver() {
         const val NONE_CASH = "com.moneyfen.REVIEW_NONE"
         const val SAVE_DEFAULT = "com.moneyfen.SAVE_DEFAULT"
         const val SAVE_ALL = "com.moneyfen.SAVE_ALL"
+        const val NOT_INCOME = "com.moneyfen.NOT_INCOME"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -26,6 +27,7 @@ class ReviewReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     ALL -> app.repo.resolveReview(id, t.amount, Repository.Dest.NONE)
                     NONE_CASH -> app.repo.resolveReview(id, 0.0, Repository.Dest.CASH)
+                    NOT_INCOME -> app.repo.decide(id, com.moneyfen.core.AutoAction.NOT_INCOME, always = false)
                     SAVE_DEFAULT, SAVE_ALL -> {
                         val amt = if (intent.action == SAVE_ALL) (if (t.currency == "USD") t.amount * app.prefs.usdRate else t.amount)
                         else app.repo.suggestedSave(t)

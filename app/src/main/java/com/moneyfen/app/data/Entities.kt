@@ -127,6 +127,10 @@ data class RuleEntity(
     val priority: Int = 0,
     /** When income comes from this name, ask to save this % of it (null = don't ask). */
     val savePercent: Double? = null,
+    /** "Always do this" instead of asking: an [com.moneyfen.core.AutoAction] name (null = ask). */
+    val autoAction: String? = null,
+    /** For REPAID: the "owed to me" account to use (null = find / create one by the name). */
+    val autoAccountId: Long? = null,
 )
 
 @Serializable

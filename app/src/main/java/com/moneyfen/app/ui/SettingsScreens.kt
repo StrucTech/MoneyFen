@@ -135,6 +135,8 @@ fun SettingsScreen(snap: Snapshot) {
             }
             SectionCard(tr("Saving from income", "التحويش من الدخل"), help = "savePercent") {
                 SwitchRow(tr("Ask how much to save when salary arrives", "اسألني هحوش كام لما المرتب ينزل"), null, prefs.askSalary) { prefs.askSalary = it }
+                SwitchRow(tr("Ask about money from a new name", "اسألني على الفلوس اللي جاية من اسم جديد"),
+                    tr("Income, a repayment, or not income?", "دخل ولا سداد ولا مش دخل؟"), prefs.askIncoming, help = "decide") { prefs.askIncoming = it }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(prefs.salaryMode == "PERCENT", { prefs.salaryMode = "PERCENT" }, { Text(tr("Percent", "نسبة") + " ${prefs.savingsPercent}%") })
                     FilterChip(prefs.salaryMode == "FIXED", { prefs.salaryMode = "FIXED" }, { Text(tr("Fixed amount", "مبلغ ثابت")) })
@@ -310,8 +312,9 @@ fun RulesScreen(snap: Snapshot) {
             items(snap.rules, key = { it.id }) { r ->
                 val c = r.categoryId?.let { snap.categoryById[it] }
                 ClickRow(r.pattern, (if (r.categoryId != null) "→ " + catName(c) else "") + (r.renameTo?.let { " · \"$it\"" } ?: "") +
-                    (if (r.exclude) tr(" · excluded", " · مستبعدة") else "") + (r.savePercent?.let { " · 💰 ${fmtPlain(it)}%" } ?: ""),
-                    leading = c?.emoji ?: "⚙️") { editing = r }
+                    (if (r.exclude) tr(" · excluded", " · مستبعدة") else "") + (r.savePercent?.let { " · 💰 ${fmtPlain(it)}%" } ?: "") +
+                    (com.moneyfen.core.AutoAction.parse(r.autoAction)?.let { " · 🤖 " + autoActionLabel(it) } ?: ""),
+                    leading = if (r.autoAction != null && c == null) "🤖" else c?.emoji ?: "⚙️", help = if (r.autoAction != null) "alwaysThis" else null) { editing = r }
                 HorizontalDivider()
             }
         }
@@ -323,6 +326,7 @@ fun RulesScreen(snap: Snapshot) {
         var exclude by remember(r) { mutableStateOf(r.exclude) }
         var priority by remember(r) { mutableStateOf(r.priority.toString()) }
         var savePct by remember(r) { mutableStateOf(r.savePercent?.let(::fmtPlain) ?: "") }
+        var auto by remember(r) { mutableStateOf(com.moneyfen.core.AutoAction.parse(r.autoAction)) }
         val matches = if (pattern.isBlank()) 0 else snap.txs.count { com.moneyfen.core.RuleMatcher.matches(pattern, it.party) }
         AlertDialog(
             onDismissRequest = { editing = null },
@@ -335,13 +339,16 @@ fun RulesScreen(snap: Snapshot) {
                     TextField1(tr("Rename to (optional)", "غيّر الاسم لـ (اختياري)"), rename, { rename = it })
                     SwitchRow(tr("Exclude from stats", "استبعد من الإحصائيات"), null, exclude) { exclude = it }
                     NumberField(tr("Income from here: ask to save % (empty = no)", "دخل من هنا: اسألني أحوش كام % (فاضي = لأ)"), savePct, { savePct = it })
+                    Picker(tr("🤖 Always do (instead of asking)", "🤖 اعمل لوحدك (بدل ما تسأل)"), listOf<com.moneyfen.core.AutoAction?>(null) + com.moneyfen.core.AutoAction.entries,
+                        auto, { it?.let { a -> autoActionLabel(a) } ?: tr("— ask me —", "— اسألني —") }, { auto = it })
                     NumberField(tr("Priority", "الأولوية"), priority, { priority = it })
                 }
             },
             confirmButton = { TextButton(onClick = {
                 if (pattern.isNotBlank()) scope.launch {
                     repo.saveRule(r.copy(pattern = pattern.trim(), categoryId = cat, renameTo = rename.ifBlank { null }, exclude = exclude,
-                        priority = priority.toIntOrNull() ?: r.priority, savePercent = parseNum(savePct)))
+                        priority = priority.toIntOrNull() ?: r.priority, savePercent = parseNum(savePct),
+                        autoAction = auto?.name, autoAccountId = if (auto == com.moneyfen.core.AutoAction.REPAID) r.autoAccountId else null))
                 }
                 editing = null
             }) { Text(tr("Save", "حفظ")) } },

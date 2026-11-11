@@ -69,7 +69,12 @@ object Notifier {
                 .setContentTitle(title)
                 .setContentText(listOf(catName, bal, daily).filter { it.isNotBlank() }.joinToString(" | "))
                 .setContentIntent(open(ctx)).setAutoCancel(true)
-            if (t.needsReview && kindOf(t).direction > 0) {
+            if (t.needsReview && kindOf(t).direction > 0 && cat?.categoryType != CategoryType.INCOME) {
+                // Money in from a new name: income, repayment, or just money in?
+                b.setContentText(if (ar) "دخل ولا سداد ولا مش دخل؟" else "Income, a repayment, or not income?")
+                b.addAction(0, if (ar) "مش دخل" else "Not income", reviewIntent(ctx, t.id, ReviewReceiver.NOT_INCOME))
+                b.addAction(0, if (ar) "اختار…" else "Choose…", open(ctx))
+            } else if (t.needsReview && kindOf(t).direction > 0) {
                 val sug = repo.suggestedSave(t)
                 b.setContentText((if (ar) "هتحوش كام منهم؟ المقترح " else "How much to save? Suggested ") + fmt(sug))
                 b.addAction(0, (if (ar) "حوّش " else "Save ") + fmt(sug), reviewIntent(ctx, t.id, ReviewReceiver.SAVE_DEFAULT))

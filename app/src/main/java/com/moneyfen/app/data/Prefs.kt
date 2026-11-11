@@ -72,6 +72,11 @@ class Prefs(context: Context) {
         get() = sp.getString("reviewDest", "CASH") ?: "CASH"
         set(v) { sp.edit { putString("reviewDest", v) }; bump() }
 
+    /** Ask about money coming in from a name no rule knows yet (income? repayment? not income?). */
+    var askIncoming: Boolean
+        get() = sp.getBoolean("askIncoming", true)
+        set(v) { sp.edit { putBoolean("askIncoming", v) }; bump() }
+
     // Saving from income
     var askSalary: Boolean
         get() = sp.getBoolean("askSalary", true)
@@ -177,6 +182,7 @@ class Prefs(context: Context) {
         "safeExclude" to safeExclude.joinToString(","), "cycleMode" to cycleMode, "includeLent" to includeLent.toString(),
         "ipnFee" to ipnFee.toString(), "ipnFeePct" to ipnFeePct.toString(), "ipnFeeMin" to ipnFeeMin.toString(),
         "ipnFeeMax" to ipnFeeMax.toString(), "ipnFeeSince" to ipnFeeSince.toString(), "cycleDay" to cycleDay.toString(),
+        "askIncoming" to askIncoming.toString(),
     )
 
     fun importMap(m: Map<String, String>) {
@@ -201,6 +207,7 @@ class Prefs(context: Context) {
         m["ipnFeeMax"]?.toDoubleOrNull()?.let { ipnFeeMax = it }
         m["ipnFeeSince"]?.toLongOrNull()?.let { ipnFeeSince = it }
         m["cycleDay"]?.toIntOrNull()?.let { cycleDay = it }
+        m["askIncoming"]?.toBooleanStrictOrNull()?.let { askIncoming = it }
         m["safeExclude"]?.let { v -> safeExclude = v.split(',').mapNotNull { it.toLongOrNull() }.toSet() }
     }
 }

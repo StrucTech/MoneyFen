@@ -26,6 +26,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,8 +36,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.moneyfen.app.data.Prices
 import com.moneyfen.app.data.Snapshot
-import com.moneyfen.app.data.TxEntity
-import com.moneyfen.app.data.kindOf
 import com.moneyfen.app.data.monthRange
 import kotlin.math.abs
 
@@ -112,26 +111,16 @@ fun HomeScreenSimple(snap: Snapshot) {
     }
 }
 
-/** "Needs your decision (n)": the first few items; the rest behind "show all". Phase 3 replaces the dialogs. */
+/** "Needs your decision (n)": the newest one right here, the rest on the decide screen. */
 @Composable
 private fun DecideCard(snap: Snapshot) {
-    val review = snap.toReview
-    var all by remember { mutableStateOf(false) }
-    var open by remember { mutableStateOf<TxEntity?>(null) }
-    SectionCard(tr("Needs your decision (${review.size})", "محتاج قرارك (${review.size})"), help = "decide") {
-        (if (all) review else review.take(3)).forEach { t ->
-            val income = kindOf(t).direction > 0
-            ClickRow(t.party ?: "",
-                (if (income) tr("How much to save?", "هتحوش كام؟") else tr("Really spending?", "صرف فعلاً؟")) + " · " + dateFmt(t.time, "dd MMM HH:mm"),
-                (if (income) "+" else "") + money(t.amount) + if (t.currency != "EGP") " ${t.currency}" else "",
-                amountColor(if (income) 1.0 else -1.0), leading = if (income) "💰" else "❔") { open = t }
-        }
-        if (review.size > 3) TextButton(onClick = { all = !all }) {
-            Text(if (all) tr("Show less", "اعرض أقل") else tr("Show all (${review.size})", "اعرض الكل (${review.size})"))
-        }
-    }
-    open?.let { t ->
-        if (kindOf(t).direction > 0) SaveDialog(t, snap) { open = null } else ReviewDialog(t) { open = null }
+    val nav = LocalNav.current
+    val review = snap.toReview.sortedByDescending { it.time }
+    val first = review.firstOrNull() ?: return
+    SectionCard(tr("Needs your decision (${review.size})", "محتاج قرارك (${review.size})"), help = "decide", action = {
+        if (review.size > 1) TextButton(onClick = { nav.navigate("decide") }) { Text(tr("All", "الكل")) }
+    }) {
+        key(first.id) { DecideItem(first, snap) }
     }
 }
 

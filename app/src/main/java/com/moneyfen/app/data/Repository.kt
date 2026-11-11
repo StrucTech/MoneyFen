@@ -16,6 +16,9 @@ import com.moneyfen.core.RuleMatcher
 import com.moneyfen.core.TxKind
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import com.moneyfen.core.AutoAction
+import com.moneyfen.core.AutoRule
+import com.moneyfen.core.DecisionRules
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
@@ -306,7 +309,7 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
         val existing = db.rules().all().filter { it.pattern.equals(party, true) }
         val keep = existing.firstOrNull()
         existing.drop(1).forEach { db.rules().delete(it) }
-        if (incomeCategory == null && savePercent == null && (keep?.renameTo.isNullOrBlank()) && keep?.exclude != true) {
+        if (incomeCategory == null && savePercent == null && (keep?.renameTo.isNullOrBlank()) && keep?.exclude != true && keep?.autoAction == null) {
             keep?.let { db.rules().delete(it) }
         } else {
             val maxP = (db.rules().all().maxOfOrNull { it.priority } ?: 0) + 1
@@ -512,11 +515,13 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
     private suspend fun insertParsed(sender: String, p: ParsedSms, time: Long, body: String, h: String, forced: Long?, live: Boolean): TxEntity {
         val acc = resolveAccount(sender, p, forced)
         val rules = db.rules().all(); val cats = db.categories().all()
+        val known = rules.any { (it.categoryId != null || it.autoAction != null) && RuleMatcher.matches(it.pattern, p.party) }
         var t = TxEntity(
             accountId = acc.id, time = time, amount = p.amount, currency = p.currency, kind = p.kind.name,
             party = p.party, reference = p.reference, balanceAfter = p.balanceAfter, availableAfter = p.availableAfter,
             smsHash = h, smsBody = body,
-            needsReview = live && (shouldReview(p.kind) || saveRuleFor(p.kind, p.party, rules) != null || (p.kind == TxKind.SALARY && prefs.askSalary)),
+            needsReview = live && (shouldReview(p.kind) || saveRuleFor(p.kind, p.party, rules) != null || (p.kind == TxKind.SALARY && prefs.askSalary) ||
+                (prefs.askIncoming && DecisionRules.askIncoming(p.kind, p.party, known))),
         )
         t = categorize(t, rules, cats)
         t = t.copy(id = db.txs().upsert(t))
@@ -524,7 +529,97 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
         t = matchRefund(t)
         t = matchCardPayment(t, cats)
         t = atmToCash(t, cats)
+        // "Always do this with <name>": decide by itself instead of asking
+        if (t.needsReview) {
+            val rule = autoRuleFor(t, rules)
+            val action = AutoAction.parse(rule?.autoAction)
+            if (rule != null && action != null) t = applyDecisionLocked(t, action, rule.autoAccountId, null, auto = true)
+        }
         return t
+    }
+
+    // ---------------------------------------------------------------- Decisions ("needs your decision")
+
+    /** The first rule whose "always" action fits this transaction (same priority order as the rules screen). */
+    private fun autoRuleFor(t: TxEntity, rules: List<RuleEntity>): RuleEntity? {
+        val autoRules = rules.filter { AutoAction.parse(it.autoAction) != null }
+        val action = DecisionRules.pick(autoRules.map { AutoRule(it.pattern, AutoAction.parse(it.autoAction)!!) }, t.party, kindOf(t).direction)
+            ?: return null
+        return autoRules.firstOrNull { it.autoAction == action.name && RuleMatcher.matches(it.pattern, t.party) }
+    }
+
+    /**
+     * The user's answer for a transaction that needs a decision. With [always], a rule remembers it for the same name
+     * and it is applied right away to the other waiting transactions of that name.
+     * INCOME keeps the transaction waiting for the "how much to save" step ([saveFromIncome] finishes it).
+     */
+    suspend fun decide(txId: Long, action: AutoAction, always: Boolean, lentAccountId: Long? = null, newLentName: String? = null) = mutex.withLock {
+        val t = db.txs().get(txId) ?: return@withLock
+        val done = applyDecisionLocked(t, action, lentAccountId, newLentName, auto = false)
+        val party = t.party?.trim()
+        if (!always || party.isNullOrBlank()) return@withLock
+        val lentId = if (action == AutoAction.REPAID) db.txs().byLinked(done.id).firstOrNull { it.note == REIMBURSED }?.accountId else null
+        saveAutoRuleLocked(party, action, lentId)
+        val dir = kindOf(t).direction
+        db.txs().all().filter { it.needsReview && it.id != t.id && kindOf(it).direction == dir && RuleMatcher.matches(party, it.party) }
+            .forEach { applyDecisionLocked(it, action, lentId, null, auto = true) }
+    }
+
+    private suspend fun saveAutoRuleLocked(party: String, action: AutoAction, lentId: Long?) {
+        val all = db.rules().all()
+        val existing = all.firstOrNull { it.pattern.equals(party, true) }
+        val cats = db.categories().all()
+        // "Always income" also makes the name an income source, like the income sources screen does
+        val incomeCat = if (action == AutoAction.INCOME && existing?.categoryId?.let { id -> cats.firstOrNull { it.id == id }?.categoryType } != CategoryType.INCOME)
+            incomeCategory(cats) else existing?.categoryId
+        val base = existing ?: RuleEntity(pattern = party, priority = (all.maxOfOrNull { it.priority } ?: 0) + 1)
+        db.rules().upsert(base.copy(autoAction = action.name, autoAccountId = lentId, categoryId = incomeCat))
+    }
+
+    private fun incomeCategory(cats: List<CategoryEntity>): Long? =
+        (cats.firstOrNull { it.key == "freelance" } ?: cats.firstOrNull { it.key == "other_income" } ?: cats.firstOrNull { it.categoryType == CategoryType.INCOME })?.id
+
+    /** Receivable account for an automatic REPAID: the rule's account, else one named like the person, else a new one with their name. */
+    private suspend fun autoLentId(party: String?, ruleAccount: Long?): Long? {
+        val lent = db.accounts().all().filter { it.accountType == AccountType.LENT && !it.archived }
+        ruleAccount?.let { id -> lent.firstOrNull { it.id == id }?.let { return it.id } }
+        val word = party?.split(' ')?.firstOrNull { it.length >= 3 }
+        return lent.firstOrNull { word != null && it.name.contains(word, true) }?.id
+    }
+
+    private suspend fun applyDecisionLocked(t: TxEntity, action: AutoAction, lentAccountId: Long?, newLentName: String?, auto: Boolean): TxEntity {
+        val incoming = kindOf(t).direction > 0
+        val cats = db.categories().all()
+        fun catType(id: Long?) = id?.let { i -> cats.firstOrNull { it.id == i }?.categoryType }
+        when (action) {
+            AutoAction.MINE -> resolveLocked(t.id, t.amount, Dest.NONE, null, null)
+            AutoAction.REPAID -> {
+                val lentId = if (auto) autoLentId(t.party, lentAccountId) else lentAccountId
+                val newName = if (auto && lentId == null) t.party?.trim()?.ifBlank { null } else newLentName
+                resolveLocked(t.id, 0.0, Dest.LENT, if (newName.isNullOrBlank()) lentId else null, newName)
+                val u = db.txs().get(t.id) ?: return t
+                val received = cats.firstOrNull { it.key == "received" }?.id ?: internalId(cats)
+                val cat = if (incoming && catType(u.categoryId) == CategoryType.INCOME) received else u.categoryId
+                db.txs().upsert(u.copy(needsReview = false, categoryId = cat, categoryLocked = u.categoryLocked || cat != u.categoryId))
+            }
+            AutoAction.INTERNAL -> {
+                db.txs().byLinked(t.id).filter { it.note == REIMBURSED }.forEach { db.txs().delete(it) }
+                db.txs().upsert(t.copy(categoryId = internalId(cats), categoryLocked = true, personalAmount = null, needsReview = false))
+            }
+            AutoAction.INCOME -> {
+                db.txs().byLinked(t.id).filter { it.note == REIMBURSED }.forEach { db.txs().delete(it) }
+                val cat = if (catType(t.categoryId) == CategoryType.INCOME) t.categoryId else incomeCategory(cats)
+                // still waiting: the "how much to save" step comes next
+                db.txs().upsert(t.copy(categoryId = cat, categoryLocked = t.categoryLocked || cat != t.categoryId, personalAmount = null, needsReview = true))
+            }
+            AutoAction.NOT_INCOME -> {
+                db.txs().byLinked(t.id).filter { it.note == REIMBURSED }.forEach { db.txs().delete(it) }
+                val received = cats.firstOrNull { it.key == "received" }?.id ?: internalId(cats)
+                val cat = if (catType(t.categoryId) == CategoryType.INCOME) received else t.categoryId
+                db.txs().upsert(t.copy(categoryId = cat, categoryLocked = t.categoryLocked || cat != t.categoryId, personalAmount = null, needsReview = false))
+            }
+        }
+        return db.txs().get(t.id) ?: t
     }
 
     private fun internalId(cats: List<CategoryEntity>) = cats.firstOrNull { it.key == "internal" }?.id
