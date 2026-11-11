@@ -3,6 +3,7 @@ package com.moneyfen.app
 import android.app.Application
 import android.content.Context
 import com.moneyfen.app.data.AppDb
+import com.moneyfen.app.data.PreMigrationBackup
 import com.moneyfen.app.data.Prefs
 import com.moneyfen.app.data.Repository
 import com.moneyfen.app.data.BackupWorker
@@ -20,7 +21,12 @@ class MoneyFenApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Notifier.createChannels(this)
-        appScope.launch { repo.ensureSeeded() }
+        // Must be read before anything opens the database (and so before a migration runs)
+        val dbVersionOnDisk = PreMigrationBackup.diskVersion(this)
+        appScope.launch {
+            runCatching { PreMigrationBackup.runIfMigrated(this@MoneyFenApp, repo, dbVersionOnDisk) }
+            repo.ensureSeeded()
+        }
         BackupWorker.schedule(this)
         com.moneyfen.app.data.PriceWorker.schedule(this)
     }

@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -130,12 +131,15 @@ fun MoneyFenTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun SectionCard(title: String? = null, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+fun SectionCard(title: String? = null, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null, help: String? = null, content: @Composable ColumnScope.() -> Unit) {
     Card(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), colors = CardDefaults.cardColors()) {
         Column(Modifier.padding(14.dp)) {
             if (title != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f, fill = false))
+                        InfoTip(help, title = title)
+                    }
                     action?.invoke()
                 }
                 Spacer(Modifier.height(8.dp))
@@ -146,9 +150,12 @@ fun SectionCard(title: String? = null, modifier: Modifier = Modifier, action: (@
 }
 
 @Composable
-fun LabelValue(label: String, value: String, color: Color = MaterialTheme.colorScheme.onSurface) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+fun LabelValue(label: String, value: String, color: Color = MaterialTheme.colorScheme.onSurface, help: String? = null) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium)
+            InfoTip(help, title = label)
+        }
         Text(value, color = color, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
     }
 }
@@ -218,14 +225,29 @@ fun ConfirmDialog(title: String, text: String, onConfirm: () -> Unit, onDismiss:
 }
 
 @Composable
-fun ClickRow(title: String, subtitle: String? = null, trailing: String? = null, trailingColor: Color = MaterialTheme.colorScheme.onSurface, leading: String? = null, onClick: () -> Unit) {
+fun ClickRow(title: String, subtitle: String? = null, trailing: String? = null, trailingColor: Color = MaterialTheme.colorScheme.onSurface, leading: String? = null, help: String? = null, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (leading != null) { Text(leading, style = MaterialTheme.typography.titleLarge); Spacer(Modifier.width(12.dp)) }
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
             if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
         }
+        InfoTip(help, title = title)
         if (trailing != null) Text(trailing, color = trailingColor, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+fun SwitchRow(title: String, sub: String?, checked: Boolean, help: String? = null, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f, fill = false))
+                InfoTip(help, title = title)
+            }
+            if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked, onChange)
     }
 }
 

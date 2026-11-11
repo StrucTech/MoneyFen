@@ -42,6 +42,16 @@ class Prefs(context: Context) {
         get() = sp.getInt("seedVersion", 1)
         set(v) { sp.edit { putInt("seedVersion", v) }; bump() }
 
+    /** New simplified screens (default). Off = the old interface; nothing is deleted either way. */
+    var simpleUi: Boolean
+        get() = sp.getBoolean("simpleUi", true)
+        set(v) { sp.edit { putBoolean("simpleUi", v) }; bump() }
+
+    /** Database version last seen by the pre-migration backup (-1 = never recorded). */
+    var dbVersionSeen: Int
+        get() = sp.getInt("dbVersionSeen", -1)
+        set(v) { sp.edit { putInt("dbVersionSeen", v) } }
+
     var hideAmounts: Boolean
         get() = sp.getBoolean("hideAmounts", false)
         set(v) { sp.edit { putBoolean("hideAmounts", v) }; bump() }

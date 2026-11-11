@@ -70,6 +70,53 @@ object BackupJson {
 }
 
 /**
+ * Keeps a JSON copy of all data in filesDir/pre-migration-<db version>.json the first time the app opens
+ * after an update that migrated the database, so the user can go back (docs/SIMPLIFY.md, section 1-b).
+ * Migrations only add columns/tables, so the copy written right after migrating holds the same data as before,
+ * and an older build can import it (unknown keys are ignored).
+ */
+object PreMigrationBackup {
+    private const val DB_NAME = "moneyfen.db"
+    private val fileName = Regex("pre-migration-(\\d+)\\.json")
+
+    /** Schema version of the database file on disk, read without opening Room (0 = no database yet). Call before Room opens. */
+    fun diskVersion(ctx: Context): Int {
+        val f = ctx.getDatabasePath(DB_NAME)
+        if (!f.exists()) return 0
+        return runCatching {
+            android.database.sqlite.SQLiteDatabase.openDatabase(f.path, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY).use { it.version }
+        }.getOrDefault(0)
+    }
+
+    /**
+     * [diskVersionAtStart] is [diskVersion] taken before Room opened. The last seen version is kept in prefs
+     * until the copy is written, so an interrupted backup is retried on the next start.
+     */
+    suspend fun runIfMigrated(ctx: Context, repo: Repository, diskVersionAtStart: Int) {
+        val prefs = repo.prefs
+        val before = if (prefs.dbVersionSeen >= 0) prefs.dbVersionSeen else diskVersionAtStart
+        val now = repo.db.openHelper.readableDatabase.version // opens Room, running any migration
+        if (before in 1 until now) {
+            val tmp = java.io.File(ctx.filesDir, "pre-migration-$now.json.tmp")
+            tmp.writeText(BackupJson.export(repo))
+            val out = java.io.File(ctx.filesDir, "pre-migration-$now.json")
+            if (!tmp.renameTo(out)) { tmp.copyTo(out, overwrite = true); tmp.delete() }
+        }
+        prefs.dbVersionSeen = now
+    }
+
+    /** The newest pre-update copy, or null if there is none. */
+    fun latest(ctx: Context): java.io.File? = ctx.filesDir.listFiles()
+        ?.mapNotNull { f -> fileName.matchEntire(f.name)?.let { it.groupValues[1].toInt() to f } }
+        ?.maxByOrNull { it.first }?.second
+
+    suspend fun restore(repo: Repository, file: java.io.File): BackupData {
+        val text = withContext(Dispatchers.IO) { file.readText() }
+        return BackupJson.import(repo, text)
+    }
+}
+
+/**
  * Minimal Supabase client (Auth + PostgREST) using plain HTTP. Free tier is enough.
  * Table: moneyfen_backups(user_id uuid pk, data jsonb, updated_at timestamptz) with RLS (see supabase/schema.sql).
  */
