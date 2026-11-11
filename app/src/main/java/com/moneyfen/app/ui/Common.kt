@@ -30,6 +30,10 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -145,6 +149,37 @@ fun SectionCard(title: String? = null, modifier: Modifier = Modifier, action: (@
                 Spacer(Modifier.height(8.dp))
             }
             content()
+        }
+    }
+}
+
+/**
+ * Card whose body folds behind its title row (tap the row or the arrow). The folded state is kept in
+ * prefs as collapsed_<[key]>, so it survives restarts. [summary] is shown next to the title while folded.
+ */
+@Composable
+fun CollapsibleCard(
+    title: String, key: String, help: String? = null, defaultCollapsed: Boolean = true,
+    summary: String? = null, content: @Composable ColumnScope.() -> Unit,
+) {
+    val prefs = LocalRepo.current.prefs
+    var collapsed by remember(key) { mutableStateOf(prefs.isCollapsed(key, defaultCollapsed)) }
+    fun toggle() { collapsed = !collapsed; prefs.setCollapsed(key, collapsed) }
+    Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), colors = CardDefaults.cardColors()) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+            Row(Modifier.fillMaxWidth().clickable { toggle() }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f, fill = false))
+                    InfoTip(help, title = title)
+                }
+                if (collapsed && summary != null) Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(
+                    if (collapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                    if (collapsed) tr("Show", "افتح") else tr("Hide", "اقفل"),
+                    Modifier.padding(start = 4.dp),
+                )
+            }
+            if (!collapsed) Column(Modifier.padding(top = 4.dp, bottom = 8.dp)) { content() }
         }
     }
 }

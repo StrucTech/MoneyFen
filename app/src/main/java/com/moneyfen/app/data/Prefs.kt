@@ -52,6 +52,10 @@ class Prefs(context: Context) {
         get() = sp.getInt("dbVersionSeen", -1)
         set(v) { sp.edit { putInt("dbVersionSeen", v) } }
 
+    /** Folded state of a home card (collapsed_<card>). No bump: only that card's own UI state changes. */
+    fun isCollapsed(card: String, default: Boolean = true): Boolean = sp.getBoolean("collapsed_$card", default)
+    fun setCollapsed(card: String, v: Boolean) { sp.edit { putBoolean("collapsed_$card", v) } }
+
     var hideAmounts: Boolean
         get() = sp.getBoolean("hideAmounts", false)
         set(v) { sp.edit { putBoolean("hideAmounts", v) }; bump() }

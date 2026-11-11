@@ -77,7 +77,7 @@ fun HomeScreen(snap: Snapshot) {
         LazyColumn(Modifier.fillMaxSize()) {
             if (snap.accounts.isNotEmpty()) item { SafeCard(snap) }
             item {
-                SectionCard(tr("Net worth", "صافي الثروة")) {
+                SectionCard(tr("Net worth", "صافي الثروة"), help = "netWorth") {
                     Text(money(snap.netWorth, currency = "EGP"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = amountColor(snap.netWorth))
                     Spacer(Modifier.height(6.dp))
                     LabelValue(tr("Assets", "الأصول"), money(snap.assets), amountColor(1.0))
@@ -88,7 +88,7 @@ fun HomeScreen(snap: Snapshot) {
             val review = snap.toReview
             if (review.isNotEmpty()) item {
                 var open by remember { mutableStateOf<com.moneyfen.app.data.TxEntity?>(null) }
-                SectionCard(tr("Needs your decision (${review.size})", "محتاج قرارك (${review.size})")) {
+                SectionCard(tr("Needs your decision (${review.size})", "محتاج قرارك (${review.size})"), help = "decide") {
                     review.take(10).forEach { t ->
                         val income = com.moneyfen.app.data.kindOf(t).direction > 0
                         ClickRow(t.party ?: "",
@@ -254,13 +254,16 @@ fun OnboardingScreen(snap: Snapshot) {
 /** Chips to add / remove whole asset types (gold, funds, stocks…) from net worth with one tap. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun NetWorthToggles(snap: Snapshot) {
+internal fun NetWorthToggles(snap: Snapshot) {
     val ctx = LocalContext.current
     val repo = LocalRepo.current
     val byType = snap.accounts.filter { !it.account.archived }.groupBy { it.account.accountType }
     if (byType.size < 2) return
     Spacer(Modifier.height(6.dp))
-    Text(tr("Counted in net worth (tap to add / remove):", "داخل في الثروة (دوس عشان تضيف / تشيل):"), style = MaterialTheme.typography.bodySmall)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(tr("Counted in net worth (tap to add / remove):", "داخل في الثروة (دوس عشان تضيف / تشيل):"), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f, fill = false))
+        InfoTip("netWorthChips")
+    }
     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         AccountType.entries.forEach { type ->
             val list = byType[type] ?: return@forEach
