@@ -10,9 +10,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [
         AccountEntity::class, TxEntity::class, CategoryEntity::class, RuleEntity::class,
-        GoalEntity::class, SmsPatternEntity::class, StatementEntity::class, GoalMoveEntity::class,
+        GoalEntity::class, SmsPatternEntity::class, StatementEntity::class, GoalMoveEntity::class, GoalAllocEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -24,10 +24,17 @@ abstract class AppDb : RoomDatabase() {
     abstract fun patterns(): SmsPatternDao
     abstract fun statements(): StatementDao
     abstract fun goalMoves(): GoalMoveDao
+    abstract fun goalAllocs(): GoalAllocDao
 
     companion object {
         fun create(context: Context): AppDb =
-            Room.databaseBuilder(context, AppDb::class.java, "moneyfen.db").addMigrations(M1_2, M2_3, M3_4, M4_5).build()
+            Room.databaseBuilder(context, AppDb::class.java, "moneyfen.db").addMigrations(M1_2, M2_3, M3_4, M4_5, M5_6).build()
+
+        private val M5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `goal_allocs` (`goalId` INTEGER NOT NULL, `accountId` INTEGER NOT NULL, `amount` REAL NOT NULL, PRIMARY KEY(`goalId`, `accountId`))")
+            }
+        }
 
         private val M4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {

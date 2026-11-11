@@ -57,6 +57,7 @@ fun PlanScreen(snap: Snapshot) {
     val month = snap.totals(from, to)
     var editBudgets by remember { mutableStateOf(false) }
     var move by remember { mutableStateOf<Pair<GoalEntity, Int>?>(null) }
+    var transfer by remember { mutableStateOf<GoalEntity?>(null) }
     var pct by remember { mutableFloatStateOf(repo.prefs.savingsPercent.toFloat()) }
 
     // Average of the last 3 complete months, for context
@@ -100,12 +101,18 @@ fun PlanScreen(snap: Snapshot) {
                                 if (current >= g.target) "✅" else "${(current / g.target * 100).toInt()}%") { nav.navigate("goal/${g.id}") }
                             if (!pot) ProgressLine((current / g.target).toFloat())
                             g.accountId?.let { aid -> snap.accountById[aid] }?.let { av ->
-                                Text((if (g.wholeAccount) tr("Whole balance of ", "كل رصيد ") else tr("Reserved in ", "محجوز في ")) + av.account.name,
+                                val split = snap.goalSplit(g).filter { it.second > 0.004 }
+                                Text(
+                                    if (g.wholeAccount) tr("Whole balance of ", "كل رصيد ") + av.account.name
+                                    else tr("In: ", "في: ") + (if (split.isEmpty()) av.account.name else split.joinToString(" · ") { (aid2, amt) ->
+                                        (snap.accountById[aid2]?.account?.name ?: "?") + " " + money(amt, false)
+                                    }),
                                     style = MaterialTheme.typography.bodySmall)
                             }
-                            if (!g.wholeAccount) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                androidx.compose.material3.OutlinedButton(onClick = { move = g to 1 }) { Text(tr("+ Add", "+ حط فيه")) }
-                                androidx.compose.material3.OutlinedButton(onClick = { move = g to -1 }) { Text(tr("− Take out", "− خد منه")) }
+                            if (!g.wholeAccount) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                androidx.compose.material3.OutlinedButton(onClick = { move = g to 1 }) { Text(tr("+ Add", "+ حط")) }
+                                androidx.compose.material3.OutlinedButton(onClick = { move = g to -1 }) { Text(tr("− Take", "− خد")) }
+                                if (g.accountId != null && g.saved > 0) androidx.compose.material3.OutlinedButton(onClick = { transfer = g }) { Text(tr("⇄ Move", "⇄ انقل")) }
                             }
                             if (!pot && current < g.target) Text(tr("Save ", "حوّش ") + money(monthly, false) + tr(" / month", " في الشهر") +
                                 " (${PlanMath.monthsLeft(System.currentTimeMillis(), g.deadline)} " + tr("months", "شهر") + ")",
@@ -138,7 +145,9 @@ fun PlanScreen(snap: Snapshot) {
 
     move?.let { (g, sign) ->
         var amt by remember(g.id, sign) { mutableStateOf("") }
-        val av = g.accountId?.let { snap.accountById[it] }
+        val holding = snap.accounts.filter { !it.account.archived && !it.account.accountType.liability && !it.account.isHolding }
+        var accId by remember(g.id, sign) { mutableStateOf(g.accountId) }
+        val av = accId?.let { snap.accountById[it] }
         val v = parseNum(amt) ?: 0.0
         AlertDialog(
             onDismissRequest = { move = null },
@@ -146,6 +155,8 @@ fun PlanScreen(snap: Snapshot) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     NumberField(tr("Amount", "المبلغ"), amt, { amt = it })
+                    if (g.accountId != null && !g.wholeAccount) Picker(if (sign > 0) tr("Money is in", "الفلوس في") else tr("Take from", "خد من"),
+                        holding.map { it.account }, holding.firstOrNull { it.account.id == accId }?.account, { "${it.accountType.emoji} ${it.name}" }, { accId = it.id })
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (sign > 0 && av != null) androidx.compose.material3.AssistChip(onClick = { amt = fmtPlain(maxOf(0.0, snap.free(av))) },
                             label = { Text(tr("All free", "كل المتاح")) })
@@ -162,10 +173,44 @@ fun PlanScreen(snap: Snapshot) {
                 }
             },
             confirmButton = { TextButton(onClick = {
-                scope.launch { repo.moveGoal(g, sign * v) }
+                scope.launch { repo.moveGoal(g, sign * v, accountId = accId) }
                 move = null
             }) { Text(tr("Save", "حفظ")) } },
             dismissButton = { TextButton(onClick = { move = null }) { Text(tr("Cancel", "إلغاء")) } },
+        )
+    }
+
+    transfer?.let { g ->
+        val split = snap.goalSplit(g).filter { it.second > 0.004 }
+        val targets = snap.accounts.filter { !it.account.archived && !it.account.accountType.liability && !it.account.isHolding }.map { it.account }
+        var from by remember(g.id) { mutableStateOf(split.maxByOrNull { it.second }?.first) }
+        var to by remember(g.id) { mutableStateOf(targets.firstOrNull { it.id != from && it.accountType == com.moneyfen.app.data.AccountType.CASH }?.id
+            ?: targets.firstOrNull { it.id != from }?.id) }
+        var amt by remember(g.id) { mutableStateOf("") }
+        val inFrom = split.firstOrNull { it.first == from }?.second ?: 0.0
+        AlertDialog(
+            onDismissRequest = { transfer = null },
+            title = { Text("${g.emoji} ${g.name}: " + tr("move between accounts", "انقل بين الحسابات")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    split.forEach { (aid, a) -> LabelValue(snap.accountById[aid]?.account?.name ?: "?", money(a)) }
+                    Picker(tr("From", "من"), split.mapNotNull { snap.accountById[it.first]?.account }, snap.accountById[from]?.account,
+                        { "${it.accountType.emoji} ${it.name}" }, { from = it.id })
+                    Picker(tr("To", "إلى"), targets.filter { it.id != from }, targets.firstOrNull { it.id == to }, { "${it.accountType.emoji} ${it.name}" }, { to = it.id })
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        NumberField(tr("Amount", "المبلغ"), amt, { amt = it }, Modifier.weight(1f))
+                        androidx.compose.material3.AssistChip(onClick = { amt = fmtPlain(inFrom) }, label = { Text(tr("All", "كله")) })
+                    }
+                    Text(tr("The goal's total stays the same; only where the money is reserved changes.",
+                        "إجمالي الهدف مش بيتغير؛ بس مكان الفلوس المحجوزة."), style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = {
+                val f = from; val t = to; val v = parseNum(amt)
+                if (f != null && t != null && v != null) scope.launch { repo.moveGoalBetween(g, f, t, v) }
+                transfer = null
+            }) { Text(tr("Move", "انقل")) } },
+            dismissButton = { TextButton(onClick = { transfer = null }) { Text(tr("Cancel", "إلغاء")) } },
         )
     }
 
@@ -262,10 +307,15 @@ fun GoalEditScreen(snap: Snapshot, id: Long) {
                     nav.popBackStack()
                 }
             }) { Text(tr("Save", "حفظ")) }
+            val split = snap.goals.firstOrNull { it.id == id }?.let { snap.goalSplit(it) }?.filter { it.second > 0.004 }.orEmpty()
+            if (split.size > 1) SectionCard(tr("Where the money is", "الفلوس فين")) {
+                split.forEach { (aid, a) -> LabelValue(snap.accountById[aid]?.account?.name ?: "?", money(a)) }
+                Text(tr("Use ⇄ Move in Plan to change it.", "استخدم ⇄ انقل في الخطة عشان تغيرها."), style = MaterialTheme.typography.bodySmall)
+            }
             val history = snap.moves.filter { it.goalId == id }
             if (history.isNotEmpty()) SectionCard(tr("History", "السجل")) {
                 history.take(50).forEach { m ->
-                    LabelValue(dateFmt(m.time, "dd MMM yyyy") + (m.note?.let { " · $it" } ?: ""), signedText(m.amount), amountColor(m.amount))
+                    LabelValue(dateFmt(m.time, "dd MMM yyyy") + (m.note?.let { " · $it" } ?: ""), if (m.amount == 0.0) "⇄" else signedText(m.amount), amountColor(m.amount))
                 }
             }
         }

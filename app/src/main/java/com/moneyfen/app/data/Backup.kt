@@ -36,6 +36,7 @@ data class BackupData(
     val patterns: List<SmsPatternEntity> = emptyList(),
     val statements: List<StatementEntity> = emptyList(),
     val goalMoves: List<GoalMoveEntity> = emptyList(),
+    val goalAllocs: List<GoalAllocEntity> = emptyList(),
     val settings: Map<String, String> = emptyMap(),
 )
 
@@ -47,7 +48,7 @@ object BackupJson {
         val data = BackupData(
             accounts = db.accounts().all(), transactions = db.txs().all(), categories = db.categories().all(),
             rules = db.rules().all(), goals = db.goals().all(), patterns = db.patterns().all(),
-            statements = db.statements().all(), goalMoves = db.goalMoves().all(), settings = repo.prefs.exportMap(),
+            statements = db.statements().all(), goalMoves = db.goalMoves().all(), goalAllocs = db.goalAllocs().all(), settings = repo.prefs.exportMap(),
         )
         return json.encodeToString(BackupData.serializer(), data)
     }
@@ -57,11 +58,11 @@ object BackupJson {
         val db = repo.db
         db.withTransaction {
             db.txs().clear(); db.accounts().clear(); db.categories().clear(); db.rules().clear()
-            db.goals().clear(); db.patterns().clear(); db.statements().clear(); db.goalMoves().clear()
+            db.goals().clear(); db.patterns().clear(); db.statements().clear(); db.goalMoves().clear(); db.goalAllocs().clear()
             db.accounts().insertAll(data.accounts); db.categories().insertAll(data.categories)
             db.txs().insertAll(data.transactions); db.rules().insertAll(data.rules)
             db.goals().insertAll(data.goals); db.patterns().insertAll(data.patterns)
-            db.statements().insertAll(data.statements); db.goalMoves().insertAll(data.goalMoves)
+            db.statements().insertAll(data.statements); db.goalMoves().insertAll(data.goalMoves); db.goalAllocs().insertAll(data.goalAllocs)
         }
         repo.prefs.importMap(data.settings)
         return data

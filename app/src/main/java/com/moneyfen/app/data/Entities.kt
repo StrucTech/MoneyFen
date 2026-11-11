@@ -181,3 +181,12 @@ data class GoalMoveEntity(
     val txId: Long? = null,
     val note: String? = null,
 )
+
+/** Part of a goal's saved money that sits in an account other than the goal's main account. */
+@Serializable
+@Entity(tableName = "goal_allocs", primaryKeys = ["goalId", "accountId"])
+data class GoalAllocEntity(
+    val goalId: Long,
+    val accountId: Long,
+    val amount: Double,
+)

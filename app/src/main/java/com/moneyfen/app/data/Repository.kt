@@ -39,6 +39,7 @@ data class Snapshot(
     val patterns: List<SmsPatternEntity> = emptyList(),
     val statements: List<StatementEntity> = emptyList(),
     val moves: List<GoalMoveEntity> = emptyList(),
+    val allocs: List<GoalAllocEntity> = emptyList(),
     val safeExclude: Set<Long> = emptySet(),
     /** Count "money I lent" (receivables) in safe to spend. */
     val includeLent: Boolean = false,
@@ -63,7 +64,18 @@ data class Snapshot(
     val toReview: List<TxEntity> get() = txs.filter { it.needsReview }
 
     /** Money reserved for goals inside an account. */
-    fun reserved(accountId: Long): Double = goals.filter { it.accountId == accountId && !it.wholeAccount }.sumOf { it.saved }
+    fun reserved(accountId: Long): Double = goals.filter { !it.wholeAccount && it.accountId != null }.sumOf { g ->
+        goalSplit(g).filter { it.first == accountId }.sumOf { it.second }
+    }
+
+    /** Where a goal's saved money is: (accountId, amount). The main account holds what isn't allocated elsewhere. */
+    fun goalSplit(g: GoalEntity): List<Pair<Long, Double>> {
+        val main = g.accountId ?: return emptyList()
+        if (g.wholeAccount) return emptyList()
+        val others = allocs.filter { it.goalId == g.id && it.accountId != main && it.amount > 0.004 }
+        val mainPart = g.saved - others.sumOf { it.amount }
+        return listOf(main to mainPart) + others.map { it.accountId to it.amount }
+    }
 
     /** Balance minus what is reserved for goals. */
     fun free(av: AccountView): Double = av.balance - reserved(av.account.id)
@@ -188,6 +200,8 @@ sealed class IngestResult {
 }
 
 const val REIMBURSED = "reimbursed"
+
+private data class Base4(val a: List<AccountEntity>, val t: List<TxEntity>, val c: List<CategoryEntity>, val al: List<GoalAllocEntity>)
 const val FEE = "fee"
 
 class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
@@ -195,17 +209,19 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
     private val day = 86_400_000L
 
     val snapshot: Flow<Snapshot> = combine(
-        combine(db.accounts().observe(), db.txs().observe(), db.categories().observe(), prefs.version) { a, t, c, _ -> Triple(a, t, c) },
+        combine(db.accounts().observe(), db.txs().observe(), db.categories().observe(), prefs.version, db.goalAllocs().observe()) { a, t, c, _, al ->
+            Base4(a, t, c, al)
+        },
         combine(db.rules().observe(), db.goals().observe(), db.patterns().observe(), db.statements().observe(), db.goalMoves().observe()) { r, g, p, s, m ->
             listOf(r, g, p, s, m)
         },
-    ) { (accounts, txs, cats), rest ->
+    ) { (accounts, txs, cats, allocs), rest ->
         @Suppress("UNCHECKED_CAST")
         val base = Snapshot(
             txs = txs, categories = cats,
             rules = rest[0] as List<RuleEntity>, goals = rest[1] as List<GoalEntity>,
             patterns = rest[2] as List<SmsPatternEntity>, statements = rest[3] as List<StatementEntity>,
-            moves = rest[4] as List<GoalMoveEntity>, safeExclude = prefs.safeExclude, includeLent = prefs.includeLent,
+            moves = rest[4] as List<GoalMoveEntity>, allocs = allocs, safeExclude = prefs.safeExclude, includeLent = prefs.includeLent,
             usdRate = prefs.usdRate, loaded = true,
         )
         val salaryCat = cats.firstOrNull { it.key == "salary" }?.id
@@ -436,17 +452,58 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
             val g = goalId?.let { id -> db.goals().all().firstOrNull { it.id == id } } ?: savingsPot(t.accountId)
             db.goals().upsert(g.copy(saved = g.saved + amount))
             db.goalMoves().insert(GoalMoveEntity(goalId = g.id, time = t.time, amount = amount, txId = t.id, note = t.party))
+            if (g.accountId != null && g.accountId != t.accountId && !g.wholeAccount) {
+                val cur = db.goalAllocs().forGoal(g.id).firstOrNull { it.accountId == t.accountId }?.amount ?: 0.0
+                db.goalAllocs().upsert(GoalAllocEntity(g.id, t.accountId, cur + amount))
+            }
             prefs.lastSaveGoal = g.id
         }
+        db.goals().all().map { it.id }.forEach { normalizeAllocs(it) }
         db.txs().upsert(t.copy(needsReview = false))
         Unit
     }
 
-    /** Manual + / - on a goal, logged in history. */
-    suspend fun moveGoal(g: GoalEntity, delta: Double, note: String? = null) {
+    /** Manual + / - on a goal, logged in history. [accountId] = which account the money is added to / taken from. */
+    suspend fun moveGoal(g: GoalEntity, delta: Double, note: String? = null, accountId: Long? = null) {
         val newSaved = maxOf(0.0, g.saved + delta)
         db.goals().upsert(g.copy(saved = newSaved))
         db.goalMoves().insert(GoalMoveEntity(goalId = g.id, amount = newSaved - g.saved, note = note))
+        if (accountId != null && accountId != g.accountId && !g.wholeAccount) {
+            val cur = db.goalAllocs().forGoal(g.id).firstOrNull { it.accountId == accountId }?.amount ?: 0.0
+            db.goalAllocs().upsert(GoalAllocEntity(g.id, accountId, maxOf(0.0, cur + (newSaved - g.saved))))
+        }
+        normalizeAllocs(g.id)
+    }
+
+    /** Keeps allocations valid: the main account's part never goes below zero. */
+    private suspend fun normalizeAllocs(goalId: Long) {
+        val g = db.goals().all().firstOrNull { it.id == goalId } ?: return
+        val allocs = db.goalAllocs().forGoal(goalId)
+        if (g.accountId == null || g.wholeAccount) { db.goalAllocs().deleteForGoal(goalId); return }
+        allocs.filter { it.accountId == g.accountId || it.amount <= 0.004 }.forEach { db.goalAllocs().delete(it) }
+        var over = allocs.filter { it.accountId != g.accountId && it.amount > 0.004 }.sumOf { it.amount } - g.saved
+        for (a in allocs.filter { it.accountId != g.accountId && it.amount > 0.004 }.sortedByDescending { it.amount }) {
+            if (over <= 0.004) break
+            val cut = minOf(a.amount, over)
+            if (a.amount - cut <= 0.004) db.goalAllocs().delete(a) else db.goalAllocs().upsert(a.copy(amount = a.amount - cut))
+            over -= cut
+        }
+    }
+
+    /** Move part of a goal's money from one account to another (the goal's total doesn't change). Returns the amount moved. */
+    suspend fun moveGoalBetween(g: GoalEntity, from: Long, to: Long, amount: Double): Double = mutex.withLock {
+        if (from == to || g.accountId == null || g.wholeAccount) return@withLock 0.0
+        val allocs = db.goalAllocs().forGoal(g.id).associateBy { it.accountId }
+        val mainPart = g.saved - allocs.values.filter { it.accountId != g.accountId }.sumOf { it.amount }
+        val available = if (from == g.accountId) mainPart else allocs[from]?.amount ?: 0.0
+        val amt = minOf(amount, maxOf(0.0, available))
+        if (amt <= 0.004) return@withLock 0.0
+        if (from != g.accountId) db.goalAllocs().upsert(GoalAllocEntity(g.id, from, (allocs[from]?.amount ?: 0.0) - amt))
+        if (to != g.accountId) db.goalAllocs().upsert(GoalAllocEntity(g.id, to, (allocs[to]?.amount ?: 0.0) + amt))
+        val names = db.accounts().all().associate { it.id to it.name }
+        db.goalMoves().insert(GoalMoveEntity(goalId = g.id, amount = 0.0, note = "${names[from]} → ${names[to]}: ${"%.2f".format(amt)}"))
+        normalizeAllocs(g.id)
+        amt
     }
 
     private fun shouldReview(k: TxKind): Boolean =
@@ -645,8 +702,12 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
     suspend fun deleteCategory(c: CategoryEntity) { db.txs().clearCategory(c.id); db.categories().delete(c) }
     suspend fun saveRule(r: RuleEntity) = db.rules().upsert(r)
     suspend fun deleteRule(r: RuleEntity) = db.rules().delete(r)
-    suspend fun saveGoal(g: GoalEntity) = db.goals().upsert(g)
-    suspend fun deleteGoal(g: GoalEntity) { db.goalMoves().deleteForGoal(g.id); db.goals().delete(g) }
+    suspend fun saveGoal(g: GoalEntity): Long {
+        val id = db.goals().upsert(g).let { if (g.id == 0L) it else g.id }
+        normalizeAllocs(id)
+        return id
+    }
+    suspend fun deleteGoal(g: GoalEntity) { db.goalMoves().deleteForGoal(g.id); db.goalAllocs().deleteForGoal(g.id); db.goals().delete(g) }
     suspend fun savePattern(p: SmsPatternEntity) = db.patterns().upsert(p)
     suspend fun deletePattern(p: SmsPatternEntity) = db.patterns().delete(p)
 

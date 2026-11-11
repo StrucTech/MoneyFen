@@ -102,3 +102,15 @@ interface GoalMoveDao {
     @Query("DELETE FROM goal_moves WHERE goalId = :goalId") suspend fun deleteForGoal(goalId: Long)
     @Query("DELETE FROM goal_moves") suspend fun clear()
 }
+
+@Dao
+interface GoalAllocDao {
+    @Query("SELECT * FROM goal_allocs") fun observe(): Flow<List<GoalAllocEntity>>
+    @Query("SELECT * FROM goal_allocs") suspend fun all(): List<GoalAllocEntity>
+    @Query("SELECT * FROM goal_allocs WHERE goalId = :goalId") suspend fun forGoal(goalId: Long): List<GoalAllocEntity>
+    @Upsert suspend fun upsert(a: GoalAllocEntity)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertAll(list: List<GoalAllocEntity>)
+    @Delete suspend fun delete(a: GoalAllocEntity)
+    @Query("DELETE FROM goal_allocs WHERE goalId = :goalId") suspend fun deleteForGoal(goalId: Long)
+    @Query("DELETE FROM goal_allocs") suspend fun clear()
+}
