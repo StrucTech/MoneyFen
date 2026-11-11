@@ -104,9 +104,9 @@ fun PlanScreen(snap: Snapshot) {
                                 val split = snap.goalSplit(g).filter { it.second > 0.004 }
                                 Text(
                                     if (g.wholeAccount) tr("Whole balance of ", "كل رصيد ") + av.account.name
-                                    else tr("In: ", "في: ") + (if (split.isEmpty()) av.account.name else split.joinToString(" · ") { (aid2, amt) ->
+                                    else tr("In: ", "في: ") + (if (split.isEmpty()) av.account.name else split.map { (aid2, amt) ->
                                         (snap.accountById[aid2]?.account?.name ?: "?") + " " + money(amt, false)
-                                    }),
+                                    }.joinToString(" · ")),
                                     style = MaterialTheme.typography.bodySmall)
                             }
                             if (!g.wholeAccount) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
