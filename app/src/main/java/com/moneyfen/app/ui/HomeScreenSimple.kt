@@ -163,7 +163,7 @@ private fun AccountsCard(snap: Snapshot) {
             // Same rule as the old home: debts shown as positive, free balance after goals keeps its sign
             val amountText = if (hasGoals && shown < 0) "−" + money(abs(shown), decimals = false) else money(abs(shown), decimals = false)
             Row(
-                Modifier.fillMaxWidth().clickable { nav.navigate("account/${a.id}") }.padding(vertical = 8.dp),
+                Modifier.fillMaxWidth().clickable { nav.navigate(if (a.isHolding) "account/${a.id}" else "history/${a.id}") }.padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(a.accountType.emoji + "  " + a.name, Modifier.weight(1f), maxLines = 1)
