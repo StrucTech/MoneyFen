@@ -42,6 +42,20 @@ class Prefs(context: Context) {
         get() = sp.getInt("seedVersion", 1)
         set(v) { sp.edit { putInt("seedVersion", v) }; bump() }
 
+    /** New simplified screens (default). Off = the old interface; nothing is deleted either way. */
+    var simpleUi: Boolean
+        get() = sp.getBoolean("simpleUi", true)
+        set(v) { sp.edit { putBoolean("simpleUi", v) }; bump() }
+
+    /** Database version last seen by the pre-migration backup (-1 = never recorded). */
+    var dbVersionSeen: Int
+        get() = sp.getInt("dbVersionSeen", -1)
+        set(v) { sp.edit { putInt("dbVersionSeen", v) } }
+
+    /** Folded state of a home card (collapsed_<card>). No bump: only that card's own UI state changes. */
+    fun isCollapsed(card: String, default: Boolean = true): Boolean = sp.getBoolean("collapsed_$card", default)
+    fun setCollapsed(card: String, v: Boolean) { sp.edit { putBoolean("collapsed_$card", v) } }
+
     var hideAmounts: Boolean
         get() = sp.getBoolean("hideAmounts", false)
         set(v) { sp.edit { putBoolean("hideAmounts", v) }; bump() }
@@ -57,6 +71,11 @@ class Prefs(context: Context) {
     var reviewDest: String
         get() = sp.getString("reviewDest", "CASH") ?: "CASH"
         set(v) { sp.edit { putString("reviewDest", v) }; bump() }
+
+    /** Ask about money coming in from a name no rule knows yet (income? repayment? not income?). */
+    var askIncoming: Boolean
+        get() = sp.getBoolean("askIncoming", true)
+        set(v) { sp.edit { putBoolean("askIncoming", v) }; bump() }
 
     // Saving from income
     var askSalary: Boolean
@@ -163,6 +182,7 @@ class Prefs(context: Context) {
         "safeExclude" to safeExclude.joinToString(","), "cycleMode" to cycleMode, "includeLent" to includeLent.toString(),
         "ipnFee" to ipnFee.toString(), "ipnFeePct" to ipnFeePct.toString(), "ipnFeeMin" to ipnFeeMin.toString(),
         "ipnFeeMax" to ipnFeeMax.toString(), "ipnFeeSince" to ipnFeeSince.toString(), "cycleDay" to cycleDay.toString(),
+        "askIncoming" to askIncoming.toString(),
     )
 
     fun importMap(m: Map<String, String>) {
@@ -187,6 +207,7 @@ class Prefs(context: Context) {
         m["ipnFeeMax"]?.toDoubleOrNull()?.let { ipnFeeMax = it }
         m["ipnFeeSince"]?.toLongOrNull()?.let { ipnFeeSince = it }
         m["cycleDay"]?.toIntOrNull()?.let { cycleDay = it }
+        m["askIncoming"]?.toBooleanStrictOrNull()?.let { askIncoming = it }
         m["safeExclude"]?.let { v -> safeExclude = v.split(',').mapNotNull { it.toLongOrNull() }.toSet() }
     }
 }

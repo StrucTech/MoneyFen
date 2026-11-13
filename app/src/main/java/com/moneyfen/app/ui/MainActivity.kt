@@ -98,7 +98,7 @@ private fun AppScaffold(nav: NavHostController, snap: Snapshot) {
         val mod = Modifier.padding(pad).consumeWindowInsets(pad).statusBarsPadding()
             .then(if (showBar) Modifier else Modifier.navigationBarsPadding()).imePadding()
         NavHost(nav, startDestination = "home", modifier = mod) {
-            composable("home") { HomeScreen(snap) }
+            composable("home") { if (LocalRepo.current.prefs.simpleUi) HomeScreenSimple(snap) else HomeScreen(snap) }
             composable("txs") { TransactionsScreen(snap, null) }
             composable("analytics") { AnalyticsScreen(snap) }
             composable("plan") { PlanScreen(snap) }
@@ -117,6 +117,7 @@ private fun AppScaffold(nav: NavHostController, snap: Snapshot) {
             }
             composable("categories") { CategoriesScreen(snap) }
             composable("rules") { RulesScreen(snap) }
+            composable("decide") { DecideScreen(snap) }
             composable("patterns") { PatternsScreen(snap) }
             composable("backup") { BackupScreen() }
             composable("sources") { IncomeSourcesScreen(snap) }

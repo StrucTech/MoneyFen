@@ -29,7 +29,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -49,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import com.moneyfen.app.data.BackupJson
 import com.moneyfen.app.data.CategoryEntity
 import com.moneyfen.app.data.CategoryType
+import com.moneyfen.app.data.PreMigrationBackup
 import com.moneyfen.app.data.RuleEntity
 import com.moneyfen.app.data.SmsPatternEntity
 import com.moneyfen.app.data.Snapshot
@@ -73,17 +73,6 @@ private fun SubScreen(title: String, fab: (() -> Unit)? = null, content: @Compos
             content()
             if (fab != null) FloatingActionButton(onClick = fab, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) { Icon(Icons.Default.Add, null) }
         }
-    }
-}
-
-@Composable
-private fun SwitchRow(title: String, sub: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(title)
-            if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(checked, onChange)
     }
 }
 
@@ -120,7 +109,7 @@ fun SettingsScreen(snap: Snapshot) {
                 SwitchRow(tr("ATM withdrawals go to Cash account", "السحب من ATM يروح لحساب الكاش"),
                     tr("Otherwise they count as spending (Cash withdrawal)", "غير كده بيتحسب مصروف (سحب كاش)"), prefs.atmToCash) { prefs.atmToCash = it }
             }
-            SectionCard(tr("Month starts on", "الشهر بيبدأ من")) {
+            SectionCard(tr("Month starts on", "الشهر بيبدأ من"), help = "salaryDay") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(prefs.cycleMode == "SALARY", { prefs.cycleMode = "SALARY" }, { Text(tr("Salary day", "يوم المرتب")) })
                     FilterChip(prefs.cycleMode == "DAY", { prefs.cycleMode = "DAY" }, { Text(tr("Fixed day", "يوم ثابت")) })
@@ -140,12 +129,14 @@ fun SettingsScreen(snap: Snapshot) {
                 val (f, t) = com.moneyfen.app.data.monthRange()
                 Text(tr("Current month: ", "الشهر الحالي: ") + periodLabel(f, t), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
             }
-            SectionCard(tr("Safe to spend", "الآمن تصرفه")) {
+            SectionCard(tr("Safe to spend", "الآمن تصرفه"), help = "canSpend") {
                 SwitchRow(tr("Count money I lent / owed to me", "احسب الفلوس اللي ليا عند الناس"),
-                    tr("Off = only counted after it's repaid", "مقفول = مش بتتحسب غير لما تترد"), prefs.includeLent) { prefs.includeLent = it }
+                    tr("Off = only counted after it's repaid", "مقفول = مش بتتحسب غير لما تترد"), prefs.includeLent, help = "owedToMe") { prefs.includeLent = it }
             }
-            SectionCard(tr("Saving from income", "التحويش من الدخل")) {
+            SectionCard(tr("Saving from income", "التحويش من الدخل"), help = "savePercent") {
                 SwitchRow(tr("Ask how much to save when salary arrives", "اسألني هحوش كام لما المرتب ينزل"), null, prefs.askSalary) { prefs.askSalary = it }
+                SwitchRow(tr("Ask about money from a new name", "اسألني على الفلوس اللي جاية من اسم جديد"),
+                    tr("Income, a repayment, or not income?", "دخل ولا سداد ولا مش دخل؟"), prefs.askIncoming, help = "decide") { prefs.askIncoming = it }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(prefs.salaryMode == "PERCENT", { prefs.salaryMode = "PERCENT" }, { Text(tr("Percent", "نسبة") + " ${prefs.savingsPercent}%") })
                     FilterChip(prefs.salaryMode == "FIXED", { prefs.salaryMode = "FIXED" }, { Text(tr("Fixed amount", "مبلغ ثابت")) })
@@ -159,7 +150,7 @@ fun SettingsScreen(snap: Snapshot) {
                     "النسبة بتتظبط من الخطة. للفريلانس أو أي دخل تاني: افتح المعاملة ← \"اسألني دايماً أحوش\"، أو اعمل قاعدة فيها نسبة تحويش."),
                     style = MaterialTheme.typography.bodySmall)
             }
-            SectionCard(tr("InstaPay fees", "رسوم انستاباي")) {
+            SectionCard(tr("InstaPay fees", "رسوم انستاباي"), help = "ipnFee") {
                 SwitchRow(tr("Add the fee to every InstaPay transfer", "ضيف الرسوم لكل تحويل انستاباي"),
                     tr("As a separate \"InstaPay fee\" transaction in Bank fees", "كمعاملة منفصلة \"InstaPay fee\" في الرسوم البنكية"), prefs.ipnFee) { prefs.ipnFee = it }
                 var pct by remember { mutableStateOf(fmtPlain(prefs.ipnFeePct)) }
@@ -192,7 +183,7 @@ fun SettingsScreen(snap: Snapshot) {
                         "كام منها صرف فعلاً؛ الباقي مش بيتحسب مصروف بس بيفضل على مديونية الكارت"), prefs.reviewCredit) { prefs.reviewCredit = it }
                 SwitchRow(tr("Also ask for debit card purchases", "اسألني كمان في مشتريات الديبت"), null, prefs.reviewDebit) { prefs.reviewDebit = it }
             }
-            SectionCard(tr("Prices", "الأسعار")) {
+            SectionCard(tr("Prices", "الأسعار"), help = "livePrice") {
                 SwitchRow(tr("Update USD rate automatically", "حدّث سعر الدولار أوتوماتيك"), null, prefs.autoUsd) { prefs.autoUsd = it }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NumberField(tr("USD rate (EGP)", "سعر الدولار"), usd, { usd = it }, Modifier.weight(1f))
@@ -210,7 +201,7 @@ fun SettingsScreen(snap: Snapshot) {
             }
             SectionCard(tr("Customize", "تخصيص")) {
                 ClickRow(tr("Categories & budgets", "التصنيفات والميزانيات"), "${snap.categories.size}", leading = "🗂️") { nav.navigate("categories") }
-                ClickRow(tr("Income sources", "مصادر الدخل"), tr("Choose which transfers are real income", "اختار التحويلات اللي هي دخل فعلاً"), leading = "💼") { nav.navigate("sources") }
+                ClickRow(tr("Income sources", "مصادر الدخل"), tr("Choose which transfers are real income", "اختار التحويلات اللي هي دخل فعلاً"), leading = "💼", help = "incomeSources") { nav.navigate("sources") }
                 ClickRow(tr("Auto-categorize rules", "قواعد التصنيف التلقائي"), "${snap.rules.size}", leading = "⚙️") { nav.navigate("rules") }
                 ClickRow(tr("Custom SMS templates (wallets, other banks)", "قوالب رسايل مخصصة (محافظ، بنوك تانية)"), "${snap.patterns.size}", leading = "✉️") { nav.navigate("patterns") }
                 OutlinedButton(onClick = { scope.launch { val n = repo.reapplyRules(); msg = "✔ $n" } }, modifier = Modifier.fillMaxWidth()) {
@@ -222,6 +213,9 @@ fun SettingsScreen(snap: Snapshot) {
                 ClickRow(tr("Supabase & file backup", "Supabase وملف احتياطي"),
                     if (prefs.lastBackup > 0) tr("Last: ", "آخر نسخة: ") + dateFmt(prefs.lastBackup, "dd MMM HH:mm") else tr("Not configured", "مش متظبط"),
                     leading = "☁️") { nav.navigate("backup") }
+            }
+            SectionCard(tr("Advanced", "متقدم")) {
+                SwitchRow(tr("Old interface", "الواجهة القديمة"), null, !prefs.simpleUi, help = "oldUi") { prefs.simpleUi = !it }
             }
             SectionCard(tr("Danger zone", "منطقة خطر")) {
                 OutlinedButton(onClick = { confirmClear = true }, modifier = Modifier.fillMaxWidth()) {
@@ -318,8 +312,9 @@ fun RulesScreen(snap: Snapshot) {
             items(snap.rules, key = { it.id }) { r ->
                 val c = r.categoryId?.let { snap.categoryById[it] }
                 ClickRow(r.pattern, (if (r.categoryId != null) "→ " + catName(c) else "") + (r.renameTo?.let { " · \"$it\"" } ?: "") +
-                    (if (r.exclude) tr(" · excluded", " · مستبعدة") else "") + (r.savePercent?.let { " · 💰 ${fmtPlain(it)}%" } ?: ""),
-                    leading = c?.emoji ?: "⚙️") { editing = r }
+                    (if (r.exclude) tr(" · excluded", " · مستبعدة") else "") + (r.savePercent?.let { " · 💰 ${fmtPlain(it)}%" } ?: "") +
+                    (com.moneyfen.core.AutoAction.parse(r.autoAction)?.let { " · 🤖 " + autoActionLabel(it) } ?: ""),
+                    leading = if (r.autoAction != null && c == null) "🤖" else c?.emoji ?: "⚙️", help = if (r.autoAction != null) "alwaysThis" else null) { editing = r }
                 HorizontalDivider()
             }
         }
@@ -331,6 +326,7 @@ fun RulesScreen(snap: Snapshot) {
         var exclude by remember(r) { mutableStateOf(r.exclude) }
         var priority by remember(r) { mutableStateOf(r.priority.toString()) }
         var savePct by remember(r) { mutableStateOf(r.savePercent?.let(::fmtPlain) ?: "") }
+        var auto by remember(r) { mutableStateOf(com.moneyfen.core.AutoAction.parse(r.autoAction)) }
         val matches = if (pattern.isBlank()) 0 else snap.txs.count { com.moneyfen.core.RuleMatcher.matches(pattern, it.party) }
         AlertDialog(
             onDismissRequest = { editing = null },
@@ -343,13 +339,16 @@ fun RulesScreen(snap: Snapshot) {
                     TextField1(tr("Rename to (optional)", "غيّر الاسم لـ (اختياري)"), rename, { rename = it })
                     SwitchRow(tr("Exclude from stats", "استبعد من الإحصائيات"), null, exclude) { exclude = it }
                     NumberField(tr("Income from here: ask to save % (empty = no)", "دخل من هنا: اسألني أحوش كام % (فاضي = لأ)"), savePct, { savePct = it })
+                    Picker(tr("🤖 Always do (instead of asking)", "🤖 اعمل لوحدك (بدل ما تسأل)"), listOf<com.moneyfen.core.AutoAction?>(null) + com.moneyfen.core.AutoAction.entries,
+                        auto, { it?.let { a -> autoActionLabel(a) } ?: tr("— ask me —", "— اسألني —") }, { auto = it })
                     NumberField(tr("Priority", "الأولوية"), priority, { priority = it })
                 }
             },
             confirmButton = { TextButton(onClick = {
                 if (pattern.isNotBlank()) scope.launch {
                     repo.saveRule(r.copy(pattern = pattern.trim(), categoryId = cat, renameTo = rename.ifBlank { null }, exclude = exclude,
-                        priority = priority.toIntOrNull() ?: r.priority, savePercent = parseNum(savePct)))
+                        priority = priority.toIntOrNull() ?: r.priority, savePercent = parseNum(savePct),
+                        autoAction = auto?.name, autoAccountId = if (auto == com.moneyfen.core.AutoAction.REPAID) r.autoAccountId else null))
                 }
                 editing = null
             }) { Text(tr("Save", "حفظ")) } },
@@ -476,6 +475,8 @@ fun BackupScreen() {
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var confirmRestore by remember { mutableStateOf(false) }
+    var confirmPreUpdate by remember { mutableStateOf(false) }
+    val preUpdate = remember { PreMigrationBackup.latest(ctx) }
 
     fun act(block: suspend () -> String) {
         busy = true; status = null
@@ -536,9 +537,18 @@ fun BackupScreen() {
                 }
                 Text(tr("Import replaces all data in the app.", "الاستيراد بيستبدل كل البيانات اللي في الأبلكيشن."), style = MaterialTheme.typography.bodySmall)
             }
+            if (preUpdate != null) SectionCard(tr("Before the last update", "قبل آخر تحديث"), help = "preUpdateBackup") {
+                Text(tr("Copy saved on ", "نسخة اتحفظت يوم ") + dateFmt(preUpdate.lastModified(), "dd MMM yyyy HH:mm"), style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(enabled = !busy, onClick = { confirmPreUpdate = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(tr("Restore the pre-update copy", "استرجع نسخة ما قبل التحديث"))
+                }
+            }
             status?.let { Text(it, Modifier.padding(16.dp)) }
         }
     }
+    if (confirmPreUpdate && preUpdate != null) ConfirmDialog(tr("Restore the pre-update copy?", "تسترجع نسخة ما قبل التحديث؟"),
+        tr("This replaces all data on the phone. Anything added after the update will be lost.", "ده هيستبدل كل البيانات اللي على الموبايل. أي حاجة اتضافت بعد التحديث هتروح."),
+        { act { val d = PreMigrationBackup.restore(repo, preUpdate); "✔ ${d.transactions.size} transactions restored" } }, { confirmPreUpdate = false })
     if (confirmRestore) ConfirmDialog(tr("Restore from Supabase?", "تسترجع من Supabase؟"),
         tr("This replaces all data on the phone.", "ده هيستبدل كل البيانات اللي على الموبايل."),
         { act { val d = sb.restore(repo); "✔ ${d.transactions.size} transactions restored" } }, { confirmRestore = false })

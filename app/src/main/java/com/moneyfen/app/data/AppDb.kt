@@ -12,7 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AccountEntity::class, TxEntity::class, CategoryEntity::class, RuleEntity::class,
         GoalEntity::class, SmsPatternEntity::class, StatementEntity::class, GoalMoveEntity::class, GoalAllocEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -28,7 +28,15 @@ abstract class AppDb : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDb =
-            Room.databaseBuilder(context, AppDb::class.java, "moneyfen.db").addMigrations(M1_2, M2_3, M3_4, M4_5, M5_6).build()
+            Room.databaseBuilder(context, AppDb::class.java, "moneyfen.db").addMigrations(M1_2, M2_3, M3_4, M4_5, M5_6, M6_7).build()
+
+        /** "Always do this" decisions on rules (simplify phase 3). */
+        private val M6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE rules ADD COLUMN autoAction TEXT")
+                db.execSQL("ALTER TABLE rules ADD COLUMN autoAccountId INTEGER")
+            }
+        }
 
         private val M5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {

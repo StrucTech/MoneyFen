@@ -243,13 +243,19 @@ fun SaveDialog(t: TxEntity, snap: com.moneyfen.app.data.Snapshot, onDismiss: () 
 /** Safe to spend = free money in accounts (after goals) − credit card debt. */
 @Composable
 fun SafeCard(snap: com.moneyfen.app.data.Snapshot) {
+    SectionCard(tr("✅ Safe to spend", "✅ الآمن تصرفه"), help = "canSpend") { SafeDetails(snap) }
+}
+
+/** Body of [SafeCard]: total, its parts, the daily block and the "count owed money" switch. Also used by the simple home. */
+@Composable
+fun SafeDetails(snap: com.moneyfen.app.data.Snapshot) {
     val s = snap.safeToSpend()
-    SectionCard(tr("✅ Safe to spend", "✅ الآمن تصرفه")) {
+    run {
         Text(money(s.safe, currency = "EGP"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = amountColor(s.safe))
         LabelValue(tr("In accounts", "في الحسابات"), money(s.cash))
-        if (s.owed > 0) LabelValue(tr("+ Owed to you", "+ ليك عند الناس"), money(s.owed))
-        if (s.reserved > 0) LabelValue(tr("− Reserved for goals", "− محجوز للأهداف"), money(s.reserved))
-        if (s.cardDebt > 0) LabelValue(tr("− Credit card debt", "− مديونية الكريديت"), money(s.cardDebt))
+        if (s.owed > 0) LabelValue(tr("+ Owed to you", "+ ليك عند الناس"), money(s.owed), help = "owedToMe")
+        if (s.reserved > 0) LabelValue(tr("− Reserved for goals", "− محجوز للأهداف"), money(s.reserved), help = "saved")
+        if (s.cardDebt > 0) LabelValue(tr("− Credit card debt", "− مديونية الكريديت"), money(s.cardDebt), help = "cardDebt")
         if (s.safe < 0) Text(tr("You're spending money you don't have — pay the card from savings or cut spending.",
             "انت بتصرف فلوس مش معاك — الكارت أكتر من المتاح بعد التحويش."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         DailyBlock(snap)
@@ -286,12 +292,15 @@ fun LentPicker(lents: List<AccountEntity>, selected: Long?, onSelect: (Long?) ->
 fun DailyBlock(snap: com.moneyfen.app.data.Snapshot) {
     val d = snap.daily()
     androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
-    Text(tr("📅 Allowed per day", "📅 المسموح في اليوم"), fontWeight = FontWeight.SemiBold)
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(tr("📅 Allowed per day", "📅 المسموح في اليوم"), fontWeight = FontWeight.SemiBold)
+        InfoTip("today", title = tr("Allowed per day", "المسموح في اليوم"))
+    }
     Text(money(maxOf(0.0, d.allowance)), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = amountColor(d.allowance))
     LabelValue(tr("Spent today", "صرفت النهارده"), money(d.spentToday))
     LabelValue(tr("Left for today", "باقي للنهارده"), money(d.leftToday), amountColor(d.leftToday))
     if (d.allowance > 0) ProgressLine((d.spentToday / d.allowance).toFloat(), over = d.spentToday > d.allowance)
-    if (d.daysLeft > 1) LabelValue(tr("From tomorrow, per day", "من بكره، في اليوم"), money(maxOf(0.0, d.fromTomorrow)), amountColor(d.fromTomorrow - d.allowance + 0.001))
+    if (d.daysLeft > 1) LabelValue(tr("From tomorrow, per day", "من بكره، في اليوم"), money(maxOf(0.0, d.fromTomorrow)), amountColor(d.fromTomorrow - d.allowance + 0.001), help = "fromTomorrow")
     Text(tr("Today's limit is fixed from the morning; today's spending changes the days after.",
         "حد النهارده ثابت من الصبح؛ صرف النهارده بيأثر على الأيام اللي بعده."), style = MaterialTheme.typography.bodySmall)
     Text(tr("${d.daysLeft} days until ", "${d.daysLeft} يوم لحد ") + dateFmt(d.periodEnd, "d MMM") + tr(" (next month)", " (الشهر الجاي)"),
