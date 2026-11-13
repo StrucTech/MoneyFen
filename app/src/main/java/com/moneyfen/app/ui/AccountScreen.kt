@@ -156,7 +156,7 @@ fun AccountScreen(snap: Snapshot, id: Long) {
                         ), style = MaterialTheme.typography.bodySmall)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { nav.navigate("accountTxs/$id") }) { Text(tr("Transactions", "المعاملات")) }
+                        OutlinedButton(onClick = { nav.navigate("history/$id") }) { Text(tr("📜 History", "📜 السجل")) }
                         OutlinedButton(onClick = { nav.navigate("tx/0?account=$id") }) { Text(tr("+ Transaction", "+ معاملة")) }
                     }
                 }

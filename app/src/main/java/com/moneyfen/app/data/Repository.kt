@@ -237,18 +237,28 @@ class Repository(val ctx: Context, val db: AppDb, val prefs: Prefs) {
     }
 
     companion object {
+        /** Transactions of an account as BalTx in the account's currency (same order as [txs]). */
+        fun balTxs(a: AccountEntity, txs: List<TxEntity>, usdRate: Double): List<BalTx> = txs.map { t ->
+            val amt = when {
+                t.currency == a.currency -> t.amount
+                t.currency == "USD" -> t.amount * usdRate
+                a.currency == "USD" -> t.amount / usdRate
+                else -> t.amount
+            }
+            BalTx(t.time, amt * kindOf(t).direction, t.balanceAfter, t.availableAfter, t.id)
+        }
+
         fun balanceOf(a: AccountEntity, txs: List<TxEntity>, usdRate: Double): Double {
             if (a.isHolding && a.quantity != null && a.unitPrice != null) return a.quantity * a.unitPrice
-            val bal = txs.map { t ->
-                val amt = when {
-                    t.currency == a.currency -> t.amount
-                    t.currency == "USD" -> t.amount * usdRate
-                    a.currency == "USD" -> t.amount / usdRate
-                    else -> t.amount
-                }
-                BalTx(t.time, amt * kindOf(t).direction, t.balanceAfter, t.availableAfter, t.id)
-            }
-            return BalanceCalc.compute(bal, a.accountType == AccountType.CREDIT_CARD, a.creditLimit, a.manualBalance, a.manualAt)
+            return BalanceCalc.compute(balTxs(a, txs, usdRate), a.accountType == AccountType.CREDIT_CARD, a.creditLimit, a.manualBalance, a.manualAt)
+        }
+
+        /** Balance after every transaction of the account (oldest first). Pairs with null tx = manual correction. */
+        fun history(a: AccountEntity, txs: List<TxEntity>, usdRate: Double): List<Pair<TxEntity?, com.moneyfen.core.BalancePoint>> {
+            val list = txs.filter { it.accountId == a.id }
+            val pts = com.moneyfen.core.RunningBalance.compute(balTxs(a, list, usdRate), a.accountType == AccountType.CREDIT_CARD,
+                a.creditLimit, a.manualBalance, a.manualAt)
+            return pts.map { (if (it.index >= 0) list[it.index] else null) to it }
         }
 
         fun hash(sender: String, body: String): String {

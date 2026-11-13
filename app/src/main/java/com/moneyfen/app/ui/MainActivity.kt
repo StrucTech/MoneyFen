@@ -120,6 +120,9 @@ private fun AppScaffold(nav: NavHostController, snap: Snapshot) {
             composable("patterns") { PatternsScreen(snap) }
             composable("backup") { BackupScreen() }
             composable("sources") { IncomeSourcesScreen(snap) }
+            composable("history/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
+                AccountHistoryScreen(snap, it.arguments?.getLong("id") ?: 0L)
+            }
             composable("pickprice/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
                 PricePickerScreen(snap, it.arguments?.getLong("id") ?: 0L)
             }

@@ -149,7 +149,9 @@ fun HomeScreen(snap: Snapshot) {
                             val sub2 = if (hasGoals && shown < 0) sub + "\n" + tr("⚠️ Goals are more than the balance by ", "⚠️ الأهداف أكتر من الرصيد بـ ") + money(-shown, decimals = false) else sub
                             // Liabilities are shown as positive debt; free balance after goals keeps its sign
                             val amountText = if (hasGoals) (if (shown < 0) "−" else "") + money(abs(shown)) else money(abs(shown))
-                            ClickRow(a.name, sub2, (if (hasGoals) tr("free ", "متاح ") else "") + amountText, amountColor(shown)) { nav.navigate("account/${a.id}") }
+                            ClickRow(a.name, sub2, (if (hasGoals) tr("free ", "متاح ") else "") + amountText, amountColor(shown)) {
+                                nav.navigate(if (a.isHolding) "account/${a.id}" else "history/${a.id}")
+                            }
                         }
                     }
                 }
