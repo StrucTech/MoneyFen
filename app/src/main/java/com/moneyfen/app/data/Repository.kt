@@ -105,8 +105,7 @@ data class Snapshot(
             if (av.account.accountType == AccountType.CREDIT_CARD) debt += maxOf(0.0, -av.balanceEgp)
             else {
                 cash += av.balanceEgp
-                val r = reserved(av.account.id)
-                reserved += if (av.account.currency == "USD") r * usdRate else r
+                reserved += reserved(av.account.id)  // goal.saved is always EGP
             }
         }
         return Safe(cash, reserved, debt, owed)
