@@ -3,6 +3,9 @@ package com.moneyfen.app.ui
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +58,8 @@ val ChartColors = listOf(
 @Composable
 fun AnalyticsScreen(snap: Snapshot) {
     var offset by rememberSaveable { mutableIntStateOf(0) }
+    var showIncome by rememberSaveable { mutableStateOf(false) }
+    val nav = LocalNav.current
     val (from, to) = monthRange(offset)
     val totals = snap.totals(from, to)
     val byCat = totals.expenseByCategory.filter { it.value > 0.5 }.toList().sortedByDescending { it.second }
@@ -70,7 +75,36 @@ fun AnalyticsScreen(snap: Snapshot) {
         LazyColumn(Modifier.fillMaxSize()) {
             item {
                 SectionCard {
-                    LabelValue(tr("Income", "الدخل"), money(totals.income), amountColor(1.0))
+                    Row(Modifier.fillMaxWidth().clickable { showIncome = !showIncome }, verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            LabelValue(tr("Income", "الدخل") + (if (showIncome) "  ▲" else "  ▼"), money(totals.income), amountColor(1.0))
+                        }
+                    }
+                    if (showIncome) {
+                        val incomes = snap.incomeTxs(from, to)
+                        if (incomes.isEmpty()) Text(tr("No income this month", "مفيش دخل الشهر ده"), style = MaterialTheme.typography.bodySmall)
+                        else Text(tr("Counted from these transactions — tap one to change it", "محسوب من المعاملات دي — دوس على أي واحدة تعدّلها"),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        incomes.forEach { t ->
+                            val v = snap.statsEgp(t)
+                            val sub = buildList {
+                                add(dateFmt(t.time, "dd MMM"))
+                                add(catName(snap.categoryOf(t)))
+                                snap.accountById[t.accountId]?.let { add(it.account.name) }
+                                t.personalAmount?.let { add(tr("of ", "من ") + money(snap.toEgp(t.amount, t.currency), decimals = false)) }
+                            }.joinToString(" · ")
+                            Row(Modifier.fillMaxWidth().clickable { nav.navigate("tx/${t.id}") }.padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(t.party ?: kindLabel(kindOf(t)), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                                    Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text((if (v < 0) "−" else "+") + money(kotlin.math.abs(v)), color = amountColor(v), fontWeight = FontWeight.Medium)
+                            }
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                    }
                     LabelValue(tr("Spent", "المصروف"), money(totals.expense), amountColor(-1.0))
                     LabelValue(tr("Saved", "اتحوش"), money(totals.saved), amountColor(totals.saved))
                     if (totals.income > 0) LabelValue(tr("Savings rate", "نسبة الادخار"), "${(totals.saved / totals.income * 100).toInt()}%")

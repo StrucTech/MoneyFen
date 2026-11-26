@@ -146,15 +146,25 @@ data class Snapshot(
 
     fun categoryOf(t: TxEntity): CategoryEntity? = t.categoryId?.let { categoryById[it] }
 
+    /** How a transaction counts in statistics; null = not counted (excluded / adjustment). */
+    fun statType(t: TxEntity): CategoryType? {
+        if (t.excluded) return null
+        val k = kindOf(t); if (k == TxKind.ADJUSTMENT) return null
+        return categoryOf(t)?.categoryType ?: if (k.direction > 0) CategoryType.INCOME else CategoryType.EXPENSE
+    }
+
+    /** The transactions that make up [totals]' income, newest first. */
+    fun incomeTxs(from: Long, to: Long): List<TxEntity> =
+        txs.filter { it.time >= from && it.time < to && statType(it) == CategoryType.INCOME }.sortedByDescending { it.time }
+
     /** Income / expense of a period, ignoring excluded and between-accounts transactions. */
     fun totals(from: Long, to: Long): Totals {
         var income = 0.0; var expense = 0.0
         val byCat = mutableMapOf<Long?, Double>()
         for (t in txs) {
-            if (t.time < from || t.time >= to || t.excluded) continue
-            val k = kindOf(t); if (k == TxKind.ADJUSTMENT) continue
+            if (t.time < from || t.time >= to) continue
+            val type = statType(t) ?: continue
             val c = categoryOf(t)
-            val type = c?.categoryType ?: if (k.direction > 0) CategoryType.INCOME else CategoryType.EXPENSE
             val s = statsEgp(t)
             when (type) {
                 CategoryType.TRANSFER -> {}
