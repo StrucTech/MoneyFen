@@ -297,9 +297,10 @@ fun DailyBlock(snap: com.moneyfen.app.data.Snapshot) {
         InfoTip("today", title = tr("Allowed per day", "المسموح في اليوم"))
     }
     Text(money(maxOf(0.0, d.allowance)), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = amountColor(d.allowance))
-    LabelValue(tr("Spent today", "صرفت النهارده"), money(d.spentToday))
+    LabelValue(tr("Spent today", "صرفت النهارده"), money(d.regularToday))
+    if (d.bigToday > 0.5) LabelValue(tr("Big expenses today", "مصاريف كبيرة النهارده"), money(d.bigToday))
     LabelValue(tr("Left for today", "باقي للنهارده"), money(d.leftToday), amountColor(d.leftToday))
-    if (d.allowance > 0) ProgressLine((d.spentToday / d.allowance).toFloat(), over = d.spentToday > d.allowance)
+    if (d.allowance > 0) ProgressLine((d.regularToday / d.allowance).toFloat(), over = d.regularToday > d.allowance)
     if (d.daysLeft > 1) LabelValue(tr("From tomorrow, per day", "من بكره، في اليوم"), money(maxOf(0.0, d.fromTomorrow)), amountColor(d.fromTomorrow - d.allowance + 0.001), help = "fromTomorrow")
     Text(tr("Today's limit is fixed from the morning; today's spending changes the days after.",
         "حد النهارده ثابت من الصبح؛ صرف النهارده بيأثر على الأيام اللي بعده."), style = MaterialTheme.typography.bodySmall)

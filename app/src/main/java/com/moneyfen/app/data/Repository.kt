@@ -111,8 +111,10 @@ data class Snapshot(
         return Safe(cash, reserved, debt, owed)
     }
 
-    data class Daily(val allowance: Double, val spentToday: Double, val daysLeft: Int, val periodEnd: Long, val safeNow: Double = 0.0) {
-        val leftToday get() = allowance - spentToday
+    data class Daily(val allowance: Double, val spentToday: Double, val daysLeft: Int, val periodEnd: Long, val safeNow: Double = 0.0, val bigToday: Double = 0.0) {
+        /** Big/irregular expenses (gas, clothes…) are excluded from the daily regular quota. */
+        val regularToday get() = spentToday - bigToday
+        val leftToday get() = allowance - regularToday
         /** What's left now spread over the days after today (today's spending already taken out). */
         val fromTomorrow get() = if (daysLeft > 1) safeNow / (daysLeft - 1) else safeNow
     }
@@ -127,9 +129,14 @@ data class Snapshot(
         val today = c.timeInMillis
         val daysLeft = maxOf(1, kotlin.math.ceil((end - today) / 86_400_000.0).toInt())
         val spent = maxOf(0.0, totals(today, today + 86_400_000L).expense)
+        val bigToday = txs.filter { t ->
+            t.time >= today && t.time < today + 86_400_000L &&
+            statType(t) == CategoryType.EXPENSE &&
+            categoryOf(t)?.countInDaily == false
+        }.sumOf { kotlin.math.abs(statsEgp(it)) }
         val safeNow = safeToSpend().safe
         val allowance = (safeNow + spent) / daysLeft
-        return Daily(allowance, spent, daysLeft, end, safeNow)
+        return Daily(allowance, spent, daysLeft, end, safeNow, bigToday)
     }
 
     /** Receivables: what people / clients owe me. */

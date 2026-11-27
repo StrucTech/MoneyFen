@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -253,6 +254,7 @@ fun CategoriesScreen(snap: Snapshot) {
         var ar by remember(c) { mutableStateOf(c.nameAr) }
         var type by remember(c) { mutableStateOf(c.categoryType) }
         var budget by remember(c) { mutableStateOf(c.monthlyBudget?.let(::fmtPlain) ?: "") }
+        var countInDaily by remember(c) { mutableStateOf(c.countInDaily) }
         AlertDialog(
             onDismissRequest = { editing = null },
             title = { Text(tr("Category", "تصنيف")) },
@@ -263,12 +265,16 @@ fun CategoriesScreen(snap: Snapshot) {
                     TextField1("الاسم بالعربي", ar, { ar = it })
                     Picker(tr("Type", "النوع"), CategoryType.entries, type, { typeLabel(it) }, { type = it })
                     if (type == CategoryType.EXPENSE) NumberField(tr("Monthly budget", "ميزانية شهرية"), budget, { budget = it })
+                    if (type == CategoryType.EXPENSE) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr("Count in daily allowance", "احسبها في الحد اليومي"))
+                        Switch(checked = countInDaily, onCheckedChange = { countInDaily = it })
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = {
                 val name = en.ifBlank { ar }
                 if (name.isNotBlank()) scope.launch {
-                    repo.saveCategory(c.copy(emoji = emoji.ifBlank { "📁" }, nameEn = name, nameAr = ar.ifBlank { name }, type = type.name, monthlyBudget = parseNum(budget)?.takeIf { it > 0 }))
+                    repo.saveCategory(c.copy(emoji = emoji.ifBlank { "📁" }, nameEn = name, nameAr = ar.ifBlank { name }, type = type.name, monthlyBudget = parseNum(budget)?.takeIf { it > 0 }, countInDaily = countInDaily))
                 }
                 editing = null
             }) { Text(tr("Save", "حفظ")) } },

@@ -111,6 +111,7 @@ data class CategoryEntity(
     val type: String = CategoryType.EXPENSE.name,
     val monthlyBudget: Double? = null,
     val sortOrder: Int = 0,
+    @ColumnInfo(defaultValue = "1") val countInDaily: Boolean = true,
 ) {
     val categoryType: CategoryType get() = runCatching { CategoryType.valueOf(type) }.getOrDefault(CategoryType.EXPENSE)
 }

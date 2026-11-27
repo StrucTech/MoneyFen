@@ -135,7 +135,7 @@ private fun TodayCard(snap: Snapshot) {
         }
         Text(money(maxOf(0.0, d.allowance), decimals = false, currency = "EGP"), style = MaterialTheme.typography.displaySmall,
             fontWeight = FontWeight.Bold, color = amountColor(d.allowance))
-        if (d.allowance > 0) ProgressLine((d.spentToday / d.allowance).toFloat(), over = d.spentToday > d.allowance)
+        if (d.allowance > 0) ProgressLine((d.regularToday / d.allowance).toFloat(), over = d.regularToday > d.allowance)
         val parts = buildList {
             if (d.daysLeft > 1) add(tr("From tomorrow ", "من بكره ") + money(maxOf(0.0, d.fromTomorrow), decimals = false) + tr("/day", "/يوم"))
             add(tr("Until salary ", "لحد المرتب ") + money(d.safeNow, decimals = false))
